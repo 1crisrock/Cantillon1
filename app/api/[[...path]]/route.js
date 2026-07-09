@@ -197,27 +197,133 @@ export async function GET(request, { params }) {
       return json({ period, mode, unit, ...scaled, totals, destinationTotals: destTotals })
     }
 
-    // BCRA live proxy (attempt real fetch, fallback to seed latest)
-    if (path === 'bcra/latest') {
+    // BCRA live proxy - fetches key variables and caches
+    if (path === 'bcra/live') {
+      const now = Date.now()
+      const CACHE_TTL_MS = 5 * 60 * 1000 // 5 minutes
+
       try {
-        const r = await fetch('https://api.bcra.gob.ar/estadisticas/v3.0/monetarias', {
-          signal: AbortSignal.timeout(4500),
-          headers: { 'Accept': 'application/json' },
-          // Skip TLS check via node fetch is not standard; if fails we fall back below
-        })
-        if (r.ok) {
-          const data = await r.json()
-          return json({ source: 'BCRA_LIVE', ...data })
+        const db = await getDb()
+        const cached = await db.collection('bcra_cache').findOne({ _id: 'live' })
+        if (cached && (now - cached.fetched_at) < CACHE_TTL_MS) {
+          return json({ source: 'BCRA_LIVE_CACHED', age_seconds: Math.round((now - cached.fetched_at) / 1000), ...cached.data })
         }
-        throw new Error('bcra unreachable')
+      } catch (e) { /* fall through */ }
+
+      // Key BCRA v4.0 variables
+      const KEYS = {
+        1:   { key: 'reservas_usd_m',       label: 'Reservas Internacionales', unit: 'M USD' },
+        4:   { key: 'usd_ars_minorista',    label: 'USD/ARS Minorista',        unit: 'ARS' },
+        5:   { key: 'usd_ars_mayorista',    label: 'USD/ARS Mayorista',        unit: 'ARS' },
+        15:  { key: 'base_monetaria',       label: 'Base Monetaria',           unit: 'M ARS' },
+        27:  { key: 'inflacion_mensual',    label: 'Inflacion Mensual',        unit: '%' },
+        28:  { key: 'inflacion_interanual', label: 'Inflacion Interanual',     unit: '%' },
+        109: { key: 'm2',                   label: 'M2',                       unit: 'M ARS' },
+        156: { key: 'lebac_nobac',          label: 'LEBAC/NOBAC/LEGAR',        unit: 'M ARS' },
+        158: { key: 'bopreal_ledvid',       label: 'LEDIV/BOPREAL',            unit: 'M ARS' },
+        151: { key: 'pases_terceros',       label: 'Pases entre terceros 1d',  unit: 'M ARS' },
+        7:   { key: 'tasa_badlar',          label: 'Tasa BADLAR',              unit: '%' },
+      }
+
+      try {
+        const r = await fetch('https://api.bcra.gob.ar/estadisticas/v4.0/Monetarias?limit=1000', {
+          signal: AbortSignal.timeout(9000),
+          headers: { 'Accept': 'application/json' },
+        })
+        if (!r.ok) throw new Error('BCRA HTTP ' + r.status)
+        const raw = await r.json()
+
+        const idx = new Map(raw.results.map((v) => [v.idVariable, v]))
+        const variables = {}
+        for (const [id, meta] of Object.entries(KEYS)) {
+          const v = idx.get(Number(id))
+          if (v) {
+            variables[meta.key] = {
+              id: Number(id),
+              label: meta.label,
+              unit: meta.unit,
+              value: v.ultValorInformado,
+              date: v.ultFechaInformada,
+              description: v.descripcion,
+              periodicity: v.periodicidad,
+            }
+          }
+        }
+
+        // Compute derived: Monetary Dilution Ratio using live data
+        const bm = variables.base_monetaria?.value || 0
+        const rl = (variables.lebac_nobac?.value || 0) + (variables.bopreal_ledvid?.value || 0) + (variables.pases_terceros?.value || 0)
+        const mdr_live = bm > 0 ? +(rl / bm).toFixed(4) : null
+
+        // Reserves in USD B
+        const reserves_usd_b = variables.reservas_usd_m ? +(variables.reservas_usd_m.value / 1000).toFixed(2) : null
+
+        const payload = {
+          variables,
+          derived: {
+            monetary_dilution_ratio_live: mdr_live,
+            reserves_usd_b,
+            remunerated_liab_total_ars_m: +rl.toFixed(0),
+            snapshot_iso: new Date().toISOString(),
+          },
+          source_url: 'https://api.bcra.gob.ar/estadisticas/v4.0/Monetarias',
+        }
+
+        // Cache
+        try {
+          const db = await getDb()
+          await db.collection('bcra_cache').updateOne(
+            { _id: 'live' },
+            { $set: { _id: 'live', fetched_at: now, data: payload } },
+            { upsert: true },
+          )
+        } catch (e) { /* ignore cache errors */ }
+
+        return json({ source: 'BCRA_LIVE', age_seconds: 0, ...payload })
       } catch (e) {
         const latest = QUARTERLY_SERIES[QUARTERLY_SERIES.length - 1]
         return json({
           source: 'SEED_FALLBACK',
-          note: 'BCRA API unreachable from sandbox; showing latest seeded values.',
-          latest,
+          error: String(e?.message || e),
+          note: 'BCRA v4.0 API unreachable; showing latest seeded values.',
+          variables: {
+            reservas_usd_m: { value: latest.fx * 1000, date: latest.q, unit: 'M USD' },
+            base_monetaria: { value: latest.mb * 1e6, date: latest.q, unit: 'M ARS' },
+          },
+          derived: { monetary_dilution_ratio_live: +(latest.rl / latest.mb).toFixed(3), snapshot_iso: new Date().toISOString() },
         })
       }
+    }
+
+    // BCRA historical series for one variable
+    if (path === 'bcra/history') {
+      const id = search.get('id') || '1'
+      const desde = search.get('from') || new Date(Date.now() - 180 * 86400 * 1000).toISOString().slice(0, 10)
+      const hasta = search.get('to') || new Date().toISOString().slice(0, 10)
+      try {
+        const r = await fetch(`https://api.bcra.gob.ar/estadisticas/v4.0/Monetarias/${id}?desde=${desde}&hasta=${hasta}&limit=3000`, {
+          signal: AbortSignal.timeout(9000),
+          headers: { 'Accept': 'application/json' },
+        })
+        if (!r.ok) throw new Error('BCRA HTTP ' + r.status)
+        const raw = await r.json()
+        const detalle = raw.results?.[0]?.detalle || []
+        return json({
+          source: 'BCRA_LIVE',
+          id: Number(id),
+          from: desde,
+          to: hasta,
+          count: detalle.length,
+          data: detalle.map((d) => ({ date: d.fecha, value: d.valor })).reverse(),
+        })
+      } catch (e) {
+        return json({ source: 'ERROR', error: String(e?.message || e) }, 502)
+      }
+    }
+
+    // Old fallback stub kept for compatibility
+    if (path === 'bcra/latest') {
+      return json({ redirect: '/api/bcra/live' })
     }
 
     return json({ error: 'Not found', path }, 404)

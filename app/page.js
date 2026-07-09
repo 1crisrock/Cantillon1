@@ -206,6 +206,156 @@ function TreemapContent({ root, depth, x, y, width, height, index, name, value, 
   )
 }
 
+const BCRA_VARIABLES = [
+  { id: 1,   label: 'Reservas',        unit: 'M USD',    accent: 'emerald', format: (v) => `${(v / 1000).toFixed(2)} B$` },
+  { id: 5,   label: 'USD/ARS Mayor.',  unit: 'ARS',      accent: 'amber',   format: (v) => v.toFixed(2) },
+  { id: 15,  label: 'Base Monetaria',  unit: 'M ARS',    accent: 'cyan',    format: (v) => `${(v / 1e6).toFixed(2)} T$` },
+  { id: 109, label: 'M2',              unit: 'M ARS',    accent: 'cyan',    format: (v) => `${(v / 1e6).toFixed(1)} T$` },
+  { id: 28,  label: 'IPC YoY',         unit: '%',        accent: 'red',     format: (v) => `${v.toFixed(1)}%` },
+  { id: 27,  label: 'IPC Mensual',     unit: '%',        accent: 'red',     format: (v) => `${v.toFixed(2)}%` },
+  { id: 7,   label: 'BADLAR',          unit: '%',        accent: 'purple',  format: (v) => `${v.toFixed(1)}%` },
+]
+
+const accentClass = {
+  emerald: 'text-emerald-400 border-emerald-500/30',
+  amber:   'text-amber-300 border-amber-500/30',
+  cyan:    'text-cyan-400 border-cyan-500/30',
+  red:     'text-red-400 border-red-500/30',
+  purple:  'text-purple-400 border-purple-500/30',
+}
+
+function LiveBcraTicker({ data, loading, onRefresh }) {
+  const variables = data?.variables || {}
+  const derived = data?.derived || {}
+  const isLive = data?.source === 'BCRA_LIVE' || data?.source === 'BCRA_LIVE_CACHED'
+  const varByKey = {
+    1: variables.reservas_usd_m,
+    5: variables.usd_ars_mayorista,
+    15: variables.base_monetaria,
+    109: variables.m2,
+    28: variables.inflacion_interanual,
+    27: variables.inflacion_mensual,
+    7: variables.tasa_badlar,
+  }
+
+  return (
+    <div className="border-b border-amber-500/20 bg-gradient-to-r from-amber-950/10 via-background to-amber-950/10">
+      <div className="container mx-auto px-4 py-2.5">
+        <div className="flex items-center gap-3 flex-wrap">
+          <div className="flex items-center gap-2 shrink-0">
+            <span className={`inline-block w-2 h-2 rounded-full ${isLive ? 'bg-emerald-400 blink' : 'bg-red-500'}`} />
+            <span className="text-[10px] font-mono uppercase tracking-widest text-amber-300 font-bold">
+              {isLive ? 'BCRA::LIVE' : 'BCRA::OFFLINE'}
+            </span>
+            <span className="text-[9px] font-mono text-muted-foreground">
+              {data?.source === 'BCRA_LIVE_CACHED' ? `cached ${data.age_seconds}s` : (isLive ? 'realtime' : 'fallback')}
+            </span>
+          </div>
+
+          <Separator orientation="vertical" className="h-6 shrink-0" />
+
+          <div className="flex-1 flex items-center gap-4 overflow-x-auto no-scrollbar">
+            {BCRA_VARIABLES.map((V) => {
+              const v = varByKey[V.id]
+              return (
+                <div key={V.id} className={`flex items-center gap-2 px-2.5 py-1 rounded-sm border ${accentClass[V.accent]} bg-card/40 shrink-0`}>
+                  <div className="flex flex-col leading-tight">
+                    <span className="text-[9px] font-mono uppercase tracking-widest text-muted-foreground">{V.label}</span>
+                    <span className={`text-sm font-mono font-bold tabular ${accentClass[V.accent].split(' ')[0]}`}>
+                      {v ? V.format(v.value) : ''}
+                    </span>
+                    <span className="text-[8px] font-mono text-muted-foreground/70">{v?.date || ''}</span>
+                  </div>
+                </div>
+              )
+            })}
+            {derived?.monetary_dilution_ratio_live !== undefined && derived.monetary_dilution_ratio_live !== null && (
+              <div className="flex items-center gap-2 px-2.5 py-1 rounded-sm border border-amber-500/50 bg-amber-500/10 shrink-0 glow-amber">
+                <div className="flex flex-col leading-tight">
+                  <span className="text-[9px] font-mono uppercase tracking-widest text-amber-300">MDR LIVE</span>
+                  <span className="text-sm font-mono font-bold tabular text-amber-300 text-glow">
+                    {derived.monetary_dilution_ratio_live.toFixed(3)}x
+                  </span>
+                  <span className="text-[8px] font-mono text-muted-foreground/70">computed</span>
+                </div>
+              </div>
+            )}
+          </div>
+
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={onRefresh}
+            disabled={loading}
+            className="shrink-0 h-7 text-[10px] font-mono border-amber-500/40 hover:bg-amber-500/10 hover:text-amber-300"
+          >
+            <Radio className={`w-3 h-3 mr-1 ${loading ? 'animate-spin' : ''}`} />
+            {loading ? 'FETCH...' : 'REFRESH'}
+          </Button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function LiveBcraChart({ history, id, onIdChange }) {
+  const chartData = (history?.data || []).map((d) => ({
+    date: d.date,
+    value: d.value,
+  }))
+  const currentVar = BCRA_VARIABLES.find((v) => v.id === id) || BCRA_VARIABLES[0]
+
+  return (
+    <Card className="bg-card/40 border-border">
+      <CardHeader className="pb-2">
+        <div className="flex items-center justify-between flex-wrap gap-2">
+          <div className="flex items-center gap-2">
+            <Radio className="w-4 h-4 text-amber-400 blink" />
+            <CardTitle className="text-sm font-mono uppercase tracking-widest text-amber-300">
+              BCRA Live Historical :: {currentVar.label}
+            </CardTitle>
+          </div>
+          <div className="flex items-center gap-1 bg-card border border-border rounded-sm p-0.5">
+            {BCRA_VARIABLES.slice(0, 5).map((v) => (
+              <button
+                key={v.id}
+                onClick={() => onIdChange(v.id)}
+                className={`px-2 py-1 text-[10px] font-mono uppercase tracking-wider rounded-sm transition-all ${
+                  id === v.id
+                    ? 'bg-amber-500/15 text-amber-300 border border-amber-500/40'
+                    : 'text-slate-400 hover:text-slate-200 border border-transparent'
+                }`}
+              >
+                {v.label}
+              </button>
+            ))}
+          </div>
+        </div>
+        <div className="text-[10px] font-mono text-muted-foreground">
+          Source: api.bcra.gob.ar/estadisticas/v4.0/Monetarias/{id}  //  365d range  //  {chartData.length} data points
+        </div>
+      </CardHeader>
+      <CardContent>
+        <ResponsiveContainer width="100%" height={280}>
+          <AreaChart data={chartData} margin={{ top: 10, right: 20, left: 0, bottom: 0 }}>
+            <defs>
+              <linearGradient id="gradLive" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="5%" stopColor="#ffb020" stopOpacity={0.55} />
+                <stop offset="95%" stopColor="#ffb020" stopOpacity={0} />
+              </linearGradient>
+            </defs>
+            <CartesianGrid stroke="#1e293b" strokeDasharray="2 4" />
+            <XAxis dataKey="date" stroke="#64748b" tick={{ fontSize: 9, fontFamily: 'JetBrains Mono' }} interval="preserveStartEnd" minTickGap={40} />
+            <YAxis stroke="#64748b" tick={{ fontSize: 10, fontFamily: 'JetBrains Mono' }} />
+            <Tooltip contentStyle={{ background: '#0a0e1a', border: '1px solid #334155', fontFamily: 'JetBrains Mono', fontSize: 11 }} />
+            <Area type="monotone" dataKey="value" name={currentVar.label} stroke="#ffb020" strokeWidth={2} fill="url(#gradLive)" />
+          </AreaChart>
+        </ResponsiveContainer>
+      </CardContent>
+    </Card>
+  )
+}
+
 export default function App() {
   const [period, setPeriod] = useState('milei')
   const [mode, setMode] = useState('nominal')
@@ -214,11 +364,42 @@ export default function App() {
   const [extDest, setExtDest] = useState(null)
   const [series, setSeries] = useState([])
   const [tick, setTick] = useState('')
+  const [bcraLive, setBcraLive] = useState(null)
+  const [bcraHistory, setBcraHistory] = useState(null)
+  const [bcraHistoryId, setBcraHistoryId] = useState(1) // Reservas default
+  const [bcraLoading, setBcraLoading] = useState(false)
 
   useEffect(() => {
     const t = setInterval(() => setTick(new Date().toISOString().replace('T', ' ').substring(0, 19) + ' UTC'), 1000)
     return () => clearInterval(t)
   }, [])
+
+  const refreshBcra = async () => {
+    setBcraLoading(true)
+    try {
+      const r = await fetch(`/api/bcra/live?ts=${Date.now()}`)
+      const j = await r.json()
+      setBcraLive(j)
+    } finally { setBcraLoading(false) }
+  }
+
+  useEffect(() => { refreshBcra() }, [])
+
+  // Auto-refresh live data every 5min
+  useEffect(() => {
+    const t = setInterval(refreshBcra, 5 * 60 * 1000)
+    return () => clearInterval(t)
+  }, [])
+
+  // Fetch live history when id changes
+  useEffect(() => {
+    const to = new Date().toISOString().slice(0, 10)
+    const from = new Date(Date.now() - 365 * 86400 * 1000).toISOString().slice(0, 10)
+    fetch(`/api/bcra/history?id=${bcraHistoryId}&from=${from}&to=${to}`)
+      .then((r) => r.json())
+      .then(setBcraHistory)
+      .catch(() => setBcraHistory(null))
+  }, [bcraHistoryId])
 
   useEffect(() => {
     Promise.all([
@@ -246,6 +427,7 @@ export default function App() {
     <div className="min-h-screen bg-background text-foreground scanline relative">
       <TerminalHeader period={period} mode={mode} setMode={setMode} tick={tick} />
       <PolicyPeriodSelector current={period} onChange={setPeriod} />
+      <LiveBcraTicker data={bcraLive} loading={bcraLoading} onRefresh={refreshBcra} />
 
       {/* KPI Row */}
       <div className="container mx-auto px-4 py-4">
@@ -445,6 +627,11 @@ export default function App() {
             </div>
           </CardContent>
         </Card>
+      </div>
+
+      {/* Live BCRA Historical Chart */}
+      <div className="container mx-auto px-4 pb-6">
+        <LiveBcraChart history={bcraHistory} id={bcraHistoryId} onIdChange={setBcraHistoryId} />
       </div>
 
       {/* Footer */}
