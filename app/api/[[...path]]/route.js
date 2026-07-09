@@ -154,28 +154,47 @@ export async function GET(request, { params }) {
     // Fiscal flows for Sankey
     if (path === 'fiscal-flows') {
       const period = search.get('period') || 'milei'
+      const mode = search.get('mode') || 'nominal'
       const flows = FISCAL_FLOWS[period]
       if (!flows) return json({ error: 'No flows for period' }, 404)
-      return json({ period, ...flows })
+      // USD normalization at real 2024 reference (1200 ARS/USD blue)
+      // Convert Trillion ARS -> Billion USD: T * 1e12 / 1200 / 1e9 = T * 833.33
+      const factor = mode === 'usd' ? (1000 / 1200) : 1 // T ARS -> B USD approx
+      const unit = mode === 'usd' ? 'B USD' : 'T ARS'
+      const scaled = mode === 'usd' ? {
+        ...flows,
+        sources: flows.sources.map((s) => ({ ...s, value: +(s.value * factor).toFixed(2) })),
+        destinations: flows.destinations.map((d) => ({ ...d, value: +(d.value * factor).toFixed(2) })),
+        links: flows.links.map((l) => ({ ...l, value: +(l.value * factor).toFixed(2) })),
+      } : flows
+      return json({ period, mode, unit, ...scaled })
     }
 
     // Extraction vs Destination panel
     if (path === 'extraction-destination') {
       const period = search.get('period') || 'milei'
+      const mode = search.get('mode') || 'nominal'
       const data = EXTRACTION_DESTINATION[period]
       if (!data) return json({ error: 'No data' }, 404)
 
-      // Aggregate totals for the header
-      const traditional = data.extraction.filter((e) => e.tax_type === 'traditional').reduce((s, x) => s + x.value, 0)
-      const inflation = data.extraction.filter((e) => e.tax_type === 'inflation').reduce((s, x) => s + x.value, 0)
+      const factor = mode === 'usd' ? (1000 / 1200) : 1
+      const unit = mode === 'usd' ? 'B USD' : '% of GDP'
+      const scaled = mode === 'usd' ? {
+        extraction: data.extraction.map((e) => ({ ...e, value: +(e.value * factor).toFixed(2) })),
+        destination: data.destination.map((d) => ({ ...d, value: +(d.value * factor).toFixed(2) })),
+      } : data
+
+      // Aggregate totals for the header (from scaled)
+      const traditional = scaled.extraction.filter((e) => e.tax_type === 'traditional').reduce((s, x) => s + x.value, 0)
+      const inflation = scaled.extraction.filter((e) => e.tax_type === 'inflation').reduce((s, x) => s + x.value, 0)
       const totals = { traditional: +traditional.toFixed(1), inflation: +inflation.toFixed(1), total: +(traditional + inflation).toFixed(1) }
 
-      const destTotals = data.destination.reduce((acc, d) => {
+      const destTotals = scaled.destination.reduce((acc, d) => {
         acc[d.sector] = (acc[d.sector] || 0) + d.value
         return acc
       }, {})
 
-      return json({ period, ...data, totals, destinationTotals: destTotals })
+      return json({ period, mode, unit, ...scaled, totals, destinationTotals: destTotals })
     }
 
     // BCRA live proxy (attempt real fetch, fallback to seed latest)

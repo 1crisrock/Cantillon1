@@ -223,8 +223,8 @@ export default function App() {
   useEffect(() => {
     Promise.all([
       fetch(`/api/metrics?period=${period}`).then((r) => r.json()),
-      fetch(`/api/fiscal-flows?period=${period === 'all' ? 'milei' : period}`).then((r) => r.json()),
-      fetch(`/api/extraction-destination?period=${period === 'all' ? 'milei' : period}`).then((r) => r.json()),
+      fetch(`/api/fiscal-flows?period=${period === 'all' ? 'milei' : period}&mode=${mode}`).then((r) => r.json()),
+      fetch(`/api/extraction-destination?period=${period === 'all' ? 'milei' : period}&mode=${mode}`).then((r) => r.json()),
       fetch(`/api/timeseries?period=${period}&mode=${mode}`).then((r) => r.json()),
     ]).then(([m, f, e, s]) => {
       setMetrics(m.metrics)
@@ -300,10 +300,10 @@ export default function App() {
                 <span className="flex items-center gap-1.5"><span className="w-2 h-2 bg-emerald-500" />Social</span>
               </div>
             </div>
-            <div className="text-[10px] font-mono text-muted-foreground">FY {flows?.year}  //  Extraction {'>>'} Destination flows in trillions ARS (real 2024)</div>
+            <div className="text-[10px] font-mono text-muted-foreground">FY {flows?.year}  //  Extraction {'>>'} Destination flows in {flows?.unit || 'T ARS'} {flows?.mode === 'usd' ? '(USD real-term)' : '(real 2024)'}</div>
           </CardHeader>
           <CardContent className="pt-0">
-            {flows && <SankeyDiagram data={flows} height={520} />}
+            {flows && <SankeyDiagram data={flows} height={520} unit={flows.unit || 'T ARS'} />}
           </CardContent>
         </Card>
       </div>
@@ -321,7 +321,7 @@ export default function App() {
                 <StatusPill label="CAPITAL FLOW OUT" color="red" />
               </div>
               <div className="text-[10px] font-mono text-muted-foreground mt-1">
-                Traditional Taxes {fmt(extDest?.totals?.traditional)}%  //  Inflation Tax <span className="text-amber-400">{fmt(extDest?.totals?.inflation)}%</span>
+                Traditional Taxes {fmt(extDest?.totals?.traditional)}{extDest?.mode === 'usd' ? ' B$' : '%'}  //  Inflation Tax <span className="text-amber-400">{fmt(extDest?.totals?.inflation)}{extDest?.mode === 'usd' ? ' B$' : '%'}</span>
               </div>
             </CardHeader>
             <CardContent>
@@ -340,7 +340,7 @@ export default function App() {
                           {width > 55 && height > 28 && (
                             <>
                               <text x={x + 6} y={y + 16} fill="#f8fafc" fontSize={10} fontFamily="JetBrains Mono" fontWeight={600}>{name}</text>
-                              <text x={x + 6} y={y + 30} fill="#f8fafc" fontSize={11} fontFamily="JetBrains Mono" opacity={0.85}>{(value || 0).toFixed(1)}%</text>
+                              <text x={x + 6} y={y + 30} fill="#f8fafc" fontSize={11} fontFamily="JetBrains Mono" opacity={0.85}>{(value || 0).toFixed(1)}{extDest?.mode === 'usd' ? ' B$' : '%'}</text>
                             </>
                           )}
                         </g>
@@ -362,7 +362,7 @@ export default function App() {
                 <StatusPill label="CAPITAL FLOW IN" color="amber" />
               </div>
               <div className="text-[10px] font-mono text-muted-foreground mt-1">
-                Sectors capturing state-directed capital, in % of GDP
+                Sectors capturing state-directed capital, in {extDest?.mode === 'usd' ? 'B USD' : '% of GDP'}
               </div>
             </CardHeader>
             <CardContent>
@@ -381,7 +381,7 @@ export default function App() {
                           {width > 55 && height > 28 && (
                             <>
                               <text x={x + 6} y={y + 16} fill="#f8fafc" fontSize={10} fontFamily="JetBrains Mono" fontWeight={600}>{name}</text>
-                              <text x={x + 6} y={y + 30} fill="#f8fafc" fontSize={11} fontFamily="JetBrains Mono" opacity={0.85}>{(value || 0).toFixed(1)}%</text>
+                              <text x={x + 6} y={y + 30} fill="#f8fafc" fontSize={11} fontFamily="JetBrains Mono" opacity={0.85}>{(value || 0).toFixed(1)}{extDest?.mode === 'usd' ? ' B$' : '%'}</text>
                             </>
                           )}
                         </g>

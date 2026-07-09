@@ -17,7 +17,7 @@ const CATEGORY_COLORS = {
   operations: '#64748b',
 }
 
-export default function SankeyDiagram({ data, height = 480 }) {
+export default function SankeyDiagram({ data, height = 480, unit = 'T ARS' }) {
   const ref = useRef(null)
 
   useEffect(() => {
@@ -108,7 +108,7 @@ export default function SankeyDiagram({ data, height = 480 }) {
       .attr('fill', (d) => CATEGORY_COLORS[d.category] || '#64748b')
       .attr('rx', 1)
       .append('title')
-      .text((d) => `${d.name}\n${(d.value || 0).toFixed(1)}T ARS`)
+      .text((d) => `${d.name}\n${(d.value || 0).toFixed(1)} ${unit}`)
 
     nodeSel.append('text')
       .attr('x', (d) => (d.x0 < width / 2 ? d.x1 + 6 : d.x0 - 6))
@@ -117,7 +117,10 @@ export default function SankeyDiagram({ data, height = 480 }) {
       .attr('text-anchor', (d) => (d.x0 < width / 2 ? 'start' : 'end'))
       .attr('fill', (d) => (d.category === 'monetary' || d.category === 'subsidy' ? '#ffb020' : '#e5e7eb'))
       .attr('font-weight', (d) => (d.category === 'monetary' || d.category === 'subsidy' ? 700 : 500))
-      .text((d) => `${d.name}  |  ${(d.value || 0).toFixed(1)}T`)
+      .text((d) => {
+        const suffix = unit === 'B USD' ? 'B$' : (unit === 'T ARS' ? 'T$' : '')
+        return `${d.name}  |  ${(d.value || 0).toFixed(1)}${suffix}`
+      })
 
   }, [data, height])
 
