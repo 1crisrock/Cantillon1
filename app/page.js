@@ -19,9 +19,11 @@ import {
 const SankeyDiagram = dynamic(() => import('@/components/SankeyDiagram'), { ssr: false })
 
 const PERIODS = [
-  { id: 'fernandez', label: 'Fernandez', sub: '2021 - Dec 2023', color: '#22d3ee' },
-  { id: 'milei',     label: 'Milei',     sub: 'Dec 2023 - 2026', color: '#ffb020' },
-  { id: 'all',       label: 'Composite', sub: 'Full 2021-2026', color: '#e5e7eb' },
+  { id: 'kirchner',  label: 'Kirchner',  sub: '2003 - Dec 2015',    color: '#38bdf8' },
+  { id: 'macri',     label: 'Macri',     sub: 'Dec 2015 - Dec 2019', color: '#a78bfa' },
+  { id: 'fernandez', label: 'Fernandez', sub: 'Dec 2019 - Dec 2023', color: '#22d3ee' },
+  { id: 'milei',     label: 'Milei',     sub: 'Dec 2023 - 2026',     color: '#ffb020' },
+  { id: 'all',       label: 'Composite', sub: 'Full 2003-2026',     color: '#e5e7eb' },
 ]
 
 const fmt = (n, d = 1) => (n === null || n === undefined || isNaN(n)) ? '' : Number(n).toLocaleString('en-US', { minimumFractionDigits: d, maximumFractionDigits: d })
@@ -436,7 +438,7 @@ export default function App() {
             title="Monetary Dilution Ratio"
             value={fmt(md?.current, 2)}
             unit="x"
-            sub={`Peak: ${fmt(md?.peak, 2)}x  |  Initial: ${fmt(md?.initial, 2)}x  |  Range 2021-2026`}
+            sub={`Peak: ${fmt(md?.peak, 2)}x  |  Initial: ${fmt(md?.initial, 2)}x  |  ${md?.series?.[0]?.q || ''} to ${md?.series?.[md.series.length - 1]?.q || ''}`}
             trend={md?.delta_pct}
             tone={mdTone}
             icon={Layers}
