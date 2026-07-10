@@ -187,6 +187,69 @@ const COLORS_DEST = {
   social: '#10b981',
 }
 
+// Shared crisp treemap content renderer with proper anti-aliasing + label truncation
+function makeTreemapContent(items, colorFn, mode) {
+  return function TreemapCell(props) {
+    const { x, y, width, height, index, name, value } = props
+    const item = items[index]
+    if (!item || !name) return null
+    const c = colorFn(item)
+    const suffix = mode === 'usd' ? ' B$' : '%'
+    const showText = width > 44 && height > 26
+    // Truncate name to fit
+    const maxChars = Math.max(4, Math.floor((width - 12) / 6.8))
+    const displayName = name.length > maxChars ? name.slice(0, Math.max(3, maxChars - 1)) + '' : name
+    return (
+      <g>
+        <rect
+          x={x}
+          y={y}
+          width={width}
+          height={height}
+          style={{
+            fill: c,
+            fillOpacity: 0.45 + Math.min(0.45, (value || 0) / 40),
+            stroke: '#0a0e1a',
+            strokeWidth: 2,
+            shapeRendering: 'crispEdges',
+          }}
+        />
+        {showText && (
+          <>
+            <text
+              x={x + 8}
+              y={y + 18}
+              fill="#f8fafc"
+              fontSize={12}
+              fontFamily="JetBrains Mono, ui-monospace, monospace"
+              fontWeight={700}
+              style={{ textRendering: 'geometricPrecision', paintOrder: 'stroke fill' }}
+              stroke="rgba(10,14,26,0.6)"
+              strokeWidth={2.5}
+            >
+              {displayName}
+            </text>
+            <text
+              x={x + 8}
+              y={y + 34}
+              fill="#f8fafc"
+              fontSize={13}
+              fontFamily="JetBrains Mono, ui-monospace, monospace"
+              fontWeight={600}
+              opacity={0.95}
+              style={{ textRendering: 'geometricPrecision', paintOrder: 'stroke fill' }}
+              stroke="rgba(10,14,26,0.6)"
+              strokeWidth={2.5}
+            >
+              {(value || 0).toFixed(1)}{suffix}
+            </text>
+          </>
+        )}
+      </g>
+    )
+  }
+}
+
 function TreemapContent({ root, depth, x, y, width, height, index, name, value, colors }) {
   const c = colors?.[root?.children?.[index]?.tax_type] || colors?.[root?.children?.[index]?.sector] || '#64748b'
   return (
@@ -512,24 +575,16 @@ export default function App() {
               {extDest && (
                 <ResponsiveContainer width="100%" height={280}>
                   <Treemap
+                    key={`ext-${extDest.period}-${extDest.mode}`}
                     data={extDest.extraction}
                     dataKey="value"
                     stroke="#0a0e1a"
-                    content={({ root, depth, x, y, width, height, index, name, value }) => {
-                      const item = extDest.extraction[index]
-                      const c = item?.tax_type === 'inflation' ? '#ffb020' : '#3b82f6'
-                      return (
-                        <g>
-                          <rect x={x} y={y} width={width} height={height} style={{ fill: c, fillOpacity: 0.35 + Math.min(0.5, (value || 0) / 40), stroke: '#0a0e1a', strokeWidth: 2 }} />
-                          {width > 55 && height > 28 && (
-                            <>
-                              <text x={x + 6} y={y + 16} fill="#f8fafc" fontSize={10} fontFamily="JetBrains Mono" fontWeight={600}>{name}</text>
-                              <text x={x + 6} y={y + 30} fill="#f8fafc" fontSize={11} fontFamily="JetBrains Mono" opacity={0.85}>{(value || 0).toFixed(1)}{extDest?.mode === 'usd' ? ' B$' : '%'}</text>
-                            </>
-                          )}
-                        </g>
-                      )
-                    }}
+                    isAnimationActive={false}
+                    content={makeTreemapContent(
+                      extDest.extraction,
+                      (item) => item?.tax_type === 'inflation' ? '#ffb020' : '#3b82f6',
+                      extDest.mode,
+                    )}
                   />
                 </ResponsiveContainer>
               )}
@@ -553,24 +608,16 @@ export default function App() {
               {extDest && (
                 <ResponsiveContainer width="100%" height={280}>
                   <Treemap
+                    key={`dst-${extDest.period}-${extDest.mode}`}
                     data={extDest.destination}
                     dataKey="value"
                     stroke="#0a0e1a"
-                    content={({ root, depth, x, y, width, height, index, name, value }) => {
-                      const item = extDest.destination[index]
-                      const c = COLORS_DEST[item?.sector] || '#64748b'
-                      return (
-                        <g>
-                          <rect x={x} y={y} width={width} height={height} style={{ fill: c, fillOpacity: 0.4 + Math.min(0.5, (value || 0) / 40), stroke: '#0a0e1a', strokeWidth: 2 }} />
-                          {width > 55 && height > 28 && (
-                            <>
-                              <text x={x + 6} y={y + 16} fill="#f8fafc" fontSize={10} fontFamily="JetBrains Mono" fontWeight={600}>{name}</text>
-                              <text x={x + 6} y={y + 30} fill="#f8fafc" fontSize={11} fontFamily="JetBrains Mono" opacity={0.85}>{(value || 0).toFixed(1)}{extDest?.mode === 'usd' ? ' B$' : '%'}</text>
-                            </>
-                          )}
-                        </g>
-                      )
-                    }}
+                    isAnimationActive={false}
+                    content={makeTreemapContent(
+                      extDest.destination,
+                      (item) => COLORS_DEST[item?.sector] || '#64748b',
+                      extDest.mode,
+                    )}
                   />
                 </ResponsiveContainer>
               )}

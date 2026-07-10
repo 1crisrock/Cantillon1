@@ -108,7 +108,18 @@
 }
 .sankey-node text {
   font-family: 'JetBrains Mono', monospace;
-  font-size: 10px;
+  font-size: 11px;
   fill: hsl(210 40% 96%);
   pointer-events: none;
+  text-rendering: geometricPrecision;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Treemap text crisp rendering */
+.recharts-treemap text,
+svg text {
+  text-rendering: geometricPrecision;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  paint-order: stroke fill;
 }
