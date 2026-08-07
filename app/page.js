@@ -11,12 +11,168 @@ import { Badge } from '@/components/ui/badge'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
 import { Separator } from '@/components/ui/separator'
 import { Switch } from '@/components/ui/switch'
+import { HoverCard, HoverCardContent, HoverCardTrigger } from '@/components/ui/hover-card'
 import {
   Activity, TrendingUp, TrendingDown, AlertTriangle, DollarSign,
   BarChart3, GitBranch, Zap, Landmark, Layers, Radio, ArrowRight,
 } from 'lucide-react'
 
 const SankeyDiagram = dynamic(() => import('@/components/SankeyDiagram'), { ssr: false })
+
+// ============ TOOLTIP CONTENT LIBRARY ============
+const TIPS = {
+  mdr: {
+    title: 'Monetary Dilution Ratio',
+    body: 'Ratio between BCRA remunerated liabilities (LELIQ / Pases / LEFI / BOPREAL) and the monetary base. Above 1.0x means the "trapped" future purchasing power exceeds base money  a monetary time bomb.',
+    thresholds: [
+      { c: 'emerald', label: '< 0.5x', text: 'Contained' },
+      { c: 'amber',   label: '0.5 - 1.0x', text: 'Elevated overhang' },
+      { c: 'red',     label: '> 1.0x', text: 'Critical: trapped M > base money' },
+    ],
+    context: 'Argentina peak in 2023-Q4 hit 2.5x (Fernandez era) versus <0.05x currently (Milei quasi-fiscal cleanup via LEFI absorption).',
+  },
+  cantillon: {
+    title: 'Cantillon Vector',
+    body: 'Named after economist Richard Cantillon (1730). Measures the gap between asset holders (Merval in USD) and wage earners (real median wage). New money reaches asset holders first while wages lag  transferring purchasing power upstream.',
+    thresholds: [
+      { c: 'emerald', label: '< 10%', text: 'Balanced' },
+      { c: 'amber',   label: '10-30%', text: 'Wealth transfer to holders' },
+      { c: 'red',     label: '> 30%', text: 'Severe capture' },
+    ],
+    context: 'Kirchner era shows the LARGEST recorded gap (+249%): assets recovered from crisis lows while wages recovered slowly. Milei era: +58% gap driven by equity rally.',
+  },
+  fcr: {
+    title: 'Fiscal Capture Ratio',
+    body: 'Portion of total fiscal extraction that ends up as direct subsidies (Energy + Transport). High ratio = state is transferring purchasing power to specific sectors rather than providing public goods.',
+    thresholds: [
+      { c: 'emerald', label: '< 8%', text: 'Low sector capture' },
+      { c: 'amber',   label: '8-15%', text: 'Elevated' },
+      { c: 'red',     label: '> 15%', text: 'Heavy sector capture' },
+    ],
+    context: 'Kirchner era: 18.9% (peak subsidy state). Macri: 10.1%. Fernandez: 14.1%. Milei: 6.2% (subsidy withdrawal).',
+  },
+  reservas: {
+    title: 'Reservas Internacionales BCRA',
+    body: 'Gross international reserves held by the Central Bank of Argentina. Includes gold, foreign currency, SDRs, IMF position, and swap with China. Net reserves are usually 20-40 B USD lower.',
+    src: 'BCRA v4.0 Monetarias / id=1',
+  },
+  usd_ars: {
+    title: 'Tipo de Cambio Mayorista',
+    body: 'Wholesale USD/ARS reference rate (Comunicacion "A" 3500). This is the official rate used for BCRA settlement and does not include CCL, MEP, or Blue premium.',
+    src: 'BCRA v4.0 Monetarias / id=5',
+  },
+  base_mon: {
+    title: 'Base Monetaria',
+    body: 'Sum of currency in circulation + bank reserves at BCRA. Direct measure of money issuance. Expressed in millions of ARS.',
+    src: 'BCRA v4.0 Monetarias / id=15',
+  },
+  m2: {
+    title: 'M2  Broad Money',
+    body: 'Currency + demand deposits + savings deposits. Wider measure of money in the economy than base monetaria.',
+    src: 'BCRA v4.0 Monetarias / id=109',
+  },
+  ipc_yoy: {
+    title: 'IPC Interanual',
+    body: 'Year-over-year change in the Consumer Price Index. Argentine peak of 289% (2024-Q1) has receded to ~33% (Milei disinflation).',
+    src: 'BCRA v4.0 Monetarias / id=28',
+  },
+  ipc_mom: {
+    title: 'IPC Mensual',
+    body: 'Month-over-month change in CPI. Best short-term inflation indicator.',
+    src: 'BCRA v4.0 Monetarias / id=27',
+  },
+  badlar: {
+    title: 'Tasa BADLAR',
+    body: 'Wholesale time-deposit rate for deposits above 1 M ARS at private banks. Key monetary policy benchmark.',
+    src: 'BCRA v4.0 Monetarias / id=7',
+  },
+  mdr_live: {
+    title: 'MDR (Live)',
+    body: 'Real-time Monetary Dilution Ratio computed from live BCRA feed: (LEBAC + BOPREAL + Pases entre terceros) / Base Monetaria.',
+    src: 'Composite of BCRA ids 156, 158, 151, 15',
+  },
+  real_term_toggle: {
+    title: 'Real-Term Normalization',
+    body: 'When enabled, converts all nominal ARS values into hard-currency equivalent (USD billions) at a real-2024 reference rate of 1200 ARS/USD (blue-chip parity). Removes inflationary distortion across periods.',
+  },
+  extraction: {
+    title: 'Extraction Vector',
+    body: 'Sum of ALL ways the state pulls capital from the private sector: traditional taxes (VAT, Income, Social Security, Duties) + hidden extractions (Inflation Tax, Financial Repression via forced holdings).',
+  },
+  destination: {
+    title: 'Destination  Capital Captors',
+    body: 'Where the extracted capital ultimately lands. Grouped by beneficiary type: private beneficiaries (subsidized firms), financial beneficiaries (LELIQ/LEFI holders + bondholders), state apparatus (public employment + provinces), and social transfers (ANSES/pensions).',
+  },
+  sector_capture: {
+    title: 'Sector Fiscal Capture Ratio',
+    body: 'Net position of each sector against the state. NEGATIVE = sector is a net EXTRACTOR (contributes more via taxes/duties than it receives back). POSITIVE = sector is a net BENEFICIARY (receives more in subsidies/transfers than it pays).',
+    examples: [
+      { c: 'red',     text: 'Public Sector: +61-72% (top beneficiary, ANSES + wages)' },
+      { c: 'red',     text: 'Banking: highest during LELIQ era (58-63%)' },
+      { c: 'emerald', text: 'Agriculture: -8 to -42% (net extractor via retenciones)' },
+    ],
+  },
+}
+
+function InfoTip({ tip, children, side = 'top' }) {
+  const t = TIPS[tip]
+  if (!t) return children
+  return (
+    <HoverCard openDelay={80} closeDelay={80}>
+      <HoverCardTrigger asChild>{children}</HoverCardTrigger>
+      <HoverCardContent side={side} className="w-96 bg-card border-amber-500/40 shadow-2xl shadow-amber-500/10 p-0 overflow-hidden">
+        <div className="p-3 border-b border-amber-500/20 bg-gradient-to-r from-amber-500/10 to-transparent">
+          <div className="flex items-center gap-2">
+            <span className="w-1.5 h-1.5 rounded-full bg-amber-400 blink" />
+            <span className="text-[10px] font-mono uppercase tracking-widest text-amber-300 font-bold">
+              INFO :: {t.title}
+            </span>
+          </div>
+        </div>
+        <div className="p-3 space-y-2.5">
+          <p className="text-[11px] leading-relaxed text-slate-300 font-mono">{t.body}</p>
+          {t.thresholds && (
+            <div className="space-y-1 pt-2 border-t border-border/40">
+              <div className="text-[9px] font-mono uppercase tracking-wider text-muted-foreground">Thresholds</div>
+              {t.thresholds.map((th, i) => (
+                <div key={i} className="flex items-center gap-2 text-[10px] font-mono">
+                  <span className={`px-1.5 py-0.5 rounded-sm border text-[9px] tabular ${
+                    th.c === 'red' ? 'bg-red-500/10 text-red-400 border-red-500/30' :
+                    th.c === 'amber' ? 'bg-amber-500/10 text-amber-400 border-amber-500/30' :
+                    'bg-emerald-500/10 text-emerald-400 border-emerald-500/30'
+                  }`}>{th.label}</span>
+                  <span className="text-slate-400">{th.text}</span>
+                </div>
+              ))}
+            </div>
+          )}
+          {t.examples && (
+            <div className="space-y-1 pt-2 border-t border-border/40">
+              <div className="text-[9px] font-mono uppercase tracking-wider text-muted-foreground">Historical Examples</div>
+              {t.examples.map((ex, i) => (
+                <div key={i} className={`text-[10px] font-mono leading-snug ${ex.c === 'red' ? 'text-amber-400' : 'text-emerald-400'}`}>
+                  {ex.text}
+                </div>
+              ))}
+            </div>
+          )}
+          {t.context && (
+            <div className="pt-2 border-t border-border/40">
+              <div className="text-[9px] font-mono uppercase tracking-wider text-muted-foreground mb-1">Context</div>
+              <p className="text-[10px] font-mono text-slate-400 leading-relaxed italic">{t.context}</p>
+            </div>
+          )}
+          {t.src && (
+            <div className="pt-2 border-t border-border/40">
+              <div className="text-[9px] font-mono uppercase tracking-wider text-muted-foreground">Source</div>
+              <p className="text-[10px] font-mono text-cyan-400/70">{t.src}</p>
+            </div>
+          )}
+        </div>
+      </HoverCardContent>
+    </HoverCard>
+  )
+}
 
 const PERIODS = [
   { id: 'kirchner',  label: 'Kirchner',  sub: '2003 - Dec 2015',    color: '#38bdf8' },
@@ -34,22 +190,26 @@ function StatusPill({ label, color = 'amber' }) {
   return <span className={`px-2 py-0.5 rounded-sm text-[10px] font-mono uppercase tracking-wider border ${cmap[color]}`}>{label}</span>
 }
 
-function MetricCard({ title, value, unit, sub, trend, tone = 'default', formula, interpretation, children, icon: Icon }) {
+function MetricCard({ title, value, unit, sub, trend, tone = 'default', formula, interpretation, children, icon: Icon, tip }) {
   const toneMap = {
     critical: 'from-red-500/10 to-transparent border-red-500/30',
     warning:  'from-amber-500/10 to-transparent border-amber-500/30',
     ok:       'from-emerald-500/10 to-transparent border-emerald-500/30',
     default:  'from-slate-500/5 to-transparent border-border',
   }
+  const titleEl = (
+    <div className={`flex items-center gap-2 ${tip ? 'cursor-help border-b border-dotted border-muted-foreground/40' : ''}`}>
+      {Icon && <Icon className="w-3.5 h-3.5 text-muted-foreground" />}
+      <span className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground">{title}</span>
+      {tip && <span className="text-[9px] font-mono text-amber-500/60 ml-0.5">?</span>}
+    </div>
+  )
   return (
     <Card className={`relative overflow-hidden bg-gradient-to-br ${toneMap[tone]} border`}>
       <div className="absolute inset-0 terminal-grid opacity-40 pointer-events-none" />
       <CardContent className="p-4 relative">
         <div className="flex items-center justify-between mb-2">
-          <div className="flex items-center gap-2">
-            {Icon && <Icon className="w-3.5 h-3.5 text-muted-foreground" />}
-            <span className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground">{title}</span>
-          </div>
+          {tip ? <InfoTip tip={tip}>{titleEl}</InfoTip> : titleEl}
           {trend !== undefined && (
             <div className={`flex items-center gap-1 text-xs font-mono ${trend >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
               {trend >= 0 ? <TrendingUp className="w-3 h-3" /> : <TrendingDown className="w-3 h-3" />}
@@ -110,7 +270,9 @@ function TerminalHeader({ period, mode, setMode, tick }) {
           </div>
           <Separator orientation="vertical" className="h-4" />
           <div className="flex items-center gap-2">
-            <span className="text-muted-foreground">REAL-TERM</span>
+            <InfoTip tip="real_term_toggle" side="bottom">
+              <span className="text-muted-foreground cursor-help border-b border-dotted border-muted-foreground/40">REAL-TERM</span>
+            </InfoTip>
             <Switch checked={mode === 'usd'} onCheckedChange={(v) => setMode(v ? 'usd' : 'nominal')} className="scale-75" />
             <span className={mode === 'usd' ? 'text-amber-300' : 'text-slate-500'}>USD</span>
           </div>
@@ -159,21 +321,91 @@ function PolicyPeriodSelector({ current, onChange }) {
 const SectorRow = ({ s }) => {
   const isNet = s.capture < 0
   const magnitude = Math.min(Math.abs(s.capture), 1)
+  const interpretation = isNet
+    ? `Net EXTRACTOR: pays ${(Math.abs(s.capture) * 100).toFixed(0)}% more via taxes than it receives`
+    : `Net BENEFICIARY: receives ${(s.capture * 100).toFixed(0)}% more in subsidies/transfers than it pays`
   return (
-    <div className="grid grid-cols-[110px_1fr_60px] items-center gap-2 py-1.5 text-[11px] font-mono">
-      <div className="text-slate-300">{s.sector}</div>
-      <div className="relative h-4 bg-muted/40 rounded-sm overflow-hidden">
-        <div
-          className={`absolute top-0 h-full ${isNet ? 'bg-emerald-500/60' : 'bg-amber-500/70'}`}
-          style={{
-            width: `${magnitude * 50}%`,
-            left: isNet ? `${50 - magnitude * 50}%` : '50%',
-          }}
-        />
-        <div className="absolute inset-y-0 left-1/2 w-px bg-border" />
+    <HoverCard openDelay={80} closeDelay={80}>
+      <HoverCardTrigger asChild>
+        <div className="grid grid-cols-[110px_1fr_60px] items-center gap-2 py-1.5 text-[11px] font-mono cursor-help hover:bg-muted/20 px-2 -mx-2 rounded-sm transition">
+          <div className="text-slate-300">{s.sector}</div>
+          <div className="relative h-4 bg-muted/40 rounded-sm overflow-hidden">
+            <div
+              className={`absolute top-0 h-full ${isNet ? 'bg-emerald-500/60' : 'bg-amber-500/70'}`}
+              style={{
+                width: `${magnitude * 50}%`,
+                left: isNet ? `${50 - magnitude * 50}%` : '50%',
+              }}
+            />
+            <div className="absolute inset-y-0 left-1/2 w-px bg-border" />
+          </div>
+          <div className={`text-right tabular ${isNet ? 'text-emerald-400' : 'text-amber-400'}`}>
+            {(s.capture * 100).toFixed(0)}%
+          </div>
+        </div>
+      </HoverCardTrigger>
+      <HoverCardContent side="right" className="w-80 bg-card border-amber-500/40 shadow-2xl p-3">
+        <div className="flex items-center gap-2 mb-2">
+          <span className={`px-1.5 py-0.5 rounded-sm text-[9px] font-mono uppercase tracking-wider border ${
+            isNet ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30' : 'bg-amber-500/10 text-amber-400 border-amber-500/30'
+          }`}>
+            {isNet ? 'EXTRACTOR' : 'BENEFICIARY'}
+          </span>
+          <span className="text-[11px] font-mono font-bold text-slate-100">{s.sector}</span>
+        </div>
+        <div className="space-y-2 text-[10px] font-mono">
+          <div className="flex justify-between border-b border-border/50 pb-1">
+            <span className="text-muted-foreground">Capture Ratio</span>
+            <span className={`tabular font-bold ${isNet ? 'text-emerald-400' : 'text-amber-400'}`}>
+              {s.capture >= 0 ? '+' : ''}{(s.capture * 100).toFixed(1)}%
+            </span>
+          </div>
+          <div className="flex justify-between border-b border-border/50 pb-1">
+            <span className="text-muted-foreground">Share of GDP</span>
+            <span className="tabular text-slate-300">{s.gdp_share.toFixed(1)}%</span>
+          </div>
+          <p className="text-[10px] text-slate-400 leading-relaxed pt-1">{interpretation}</p>
+        </div>
+      </HoverCardContent>
+    </HoverCard>
+  )
+}
+
+// Rich tooltip for treemap cells showing name, value, % of total, category tag
+const SECTOR_LABELS = {
+  private_beneficiary: 'Private Beneficiary',
+  financial_beneficiary: 'Financial Beneficiary',
+  state_apparatus: 'State Apparatus',
+  social: 'Social Transfer',
+  traditional: 'Traditional Tax',
+  inflation: 'Inflation-Based Extraction',
+}
+
+function TreemapTip({ active, payload, items, label, mode, totalKey }) {
+  if (!active || !payload || !payload.length) return null
+  const d = payload[0].payload
+  if (!d?.name) return null
+  const total = items.reduce((s, x) => s + x.value, 0)
+  const pct = (d.value / total) * 100
+  const cat = d[totalKey]
+  const suffix = mode === 'usd' ? ' B$' : '%'
+  return (
+    <div className="bg-card/95 backdrop-blur border border-amber-500/40 rounded-sm p-2.5 shadow-2xl min-w-[220px]" style={{ fontFamily: 'JetBrains Mono, monospace' }}>
+      <div className="flex items-center gap-2 mb-2 pb-1.5 border-b border-amber-500/20">
+        <span className="w-1.5 h-1.5 rounded-full bg-amber-400 blink" />
+        <span className="text-[9px] font-mono uppercase tracking-widest text-amber-300 font-bold">{label} Cell</span>
       </div>
-      <div className={`text-right tabular ${isNet ? 'text-emerald-400' : 'text-amber-400'}`}>
-        {(s.capture * 100).toFixed(0)}%
+      <div className="text-[11px] font-mono font-bold text-slate-100 mb-1">{d.name}</div>
+      {cat && (
+        <div className="text-[9px] font-mono uppercase tracking-wider text-cyan-400 mb-2">
+          {SECTOR_LABELS[cat] || cat}
+        </div>
+      )}
+      <div className="grid grid-cols-2 gap-x-3 gap-y-1 text-[10px] font-mono pt-1 border-t border-border/40">
+        <span className="text-muted-foreground">Volume</span>
+        <span className="text-right text-slate-200 tabular font-bold">{d.value.toFixed(2)}{suffix}</span>
+        <span className="text-muted-foreground">Share of block</span>
+        <span className="text-right text-amber-300 tabular">{pct.toFixed(1)}%</span>
       </div>
     </div>
   )
@@ -272,13 +504,13 @@ function TreemapContent({ root, depth, x, y, width, height, index, name, value, 
 }
 
 const BCRA_VARIABLES = [
-  { id: 1,   label: 'Reservas',        unit: 'M USD',    accent: 'emerald', format: (v) => `${(v / 1000).toFixed(2)} B$` },
-  { id: 5,   label: 'USD/ARS Mayor.',  unit: 'ARS',      accent: 'amber',   format: (v) => v.toFixed(2) },
-  { id: 15,  label: 'Base Monetaria',  unit: 'M ARS',    accent: 'cyan',    format: (v) => `${(v / 1e6).toFixed(2)} T$` },
-  { id: 109, label: 'M2',              unit: 'M ARS',    accent: 'cyan',    format: (v) => `${(v / 1e6).toFixed(1)} T$` },
-  { id: 28,  label: 'IPC YoY',         unit: '%',        accent: 'red',     format: (v) => `${v.toFixed(1)}%` },
-  { id: 27,  label: 'IPC Mensual',     unit: '%',        accent: 'red',     format: (v) => `${v.toFixed(2)}%` },
-  { id: 7,   label: 'BADLAR',          unit: '%',        accent: 'purple',  format: (v) => `${v.toFixed(1)}%` },
+  { id: 1,   label: 'Reservas',        unit: 'M USD',    accent: 'emerald', tipKey: 'reservas', format: (v) => `${(v / 1000).toFixed(2)} B$` },
+  { id: 5,   label: 'USD/ARS Mayor.',  unit: 'ARS',      accent: 'amber',   tipKey: 'usd_ars',  format: (v) => v.toFixed(2) },
+  { id: 15,  label: 'Base Monetaria',  unit: 'M ARS',    accent: 'cyan',    tipKey: 'base_mon', format: (v) => `${(v / 1e6).toFixed(2)} T$` },
+  { id: 109, label: 'M2',              unit: 'M ARS',    accent: 'cyan',    tipKey: 'm2',       format: (v) => `${(v / 1e6).toFixed(1)} T$` },
+  { id: 28,  label: 'IPC YoY',         unit: '%',        accent: 'red',     tipKey: 'ipc_yoy',  format: (v) => `${v.toFixed(1)}%` },
+  { id: 27,  label: 'IPC Mensual',     unit: '%',        accent: 'red',     tipKey: 'ipc_mom',  format: (v) => `${v.toFixed(2)}%` },
+  { id: 7,   label: 'BADLAR',          unit: '%',        accent: 'purple',  tipKey: 'badlar',   format: (v) => `${v.toFixed(1)}%` },
 ]
 
 const accentClass = {
@@ -323,27 +555,31 @@ function LiveBcraTicker({ data, loading, onRefresh }) {
             {BCRA_VARIABLES.map((V) => {
               const v = varByKey[V.id]
               return (
-                <div key={V.id} className={`flex items-center gap-2 px-2.5 py-1 rounded-sm border ${accentClass[V.accent]} bg-card/40 shrink-0`}>
-                  <div className="flex flex-col leading-tight">
-                    <span className="text-[9px] font-mono uppercase tracking-widest text-muted-foreground">{V.label}</span>
-                    <span className={`text-sm font-mono font-bold tabular ${accentClass[V.accent].split(' ')[0]}`}>
-                      {v ? V.format(v.value) : ''}
-                    </span>
-                    <span className="text-[8px] font-mono text-muted-foreground/70">{v?.date || ''}</span>
+                <InfoTip key={V.id} tip={V.tipKey} side="bottom">
+                  <div className={`flex items-center gap-2 px-2.5 py-1 rounded-sm border ${accentClass[V.accent]} bg-card/40 shrink-0 cursor-help hover:brightness-125 transition`}>
+                    <div className="flex flex-col leading-tight">
+                      <span className="text-[9px] font-mono uppercase tracking-widest text-muted-foreground">{V.label}</span>
+                      <span className={`text-sm font-mono font-bold tabular ${accentClass[V.accent].split(' ')[0]}`}>
+                        {v ? V.format(v.value) : ''}
+                      </span>
+                      <span className="text-[8px] font-mono text-muted-foreground/70">{v?.date || ''}</span>
+                    </div>
                   </div>
-                </div>
+                </InfoTip>
               )
             })}
             {derived?.monetary_dilution_ratio_live !== undefined && derived.monetary_dilution_ratio_live !== null && (
-              <div className="flex items-center gap-2 px-2.5 py-1 rounded-sm border border-amber-500/50 bg-amber-500/10 shrink-0 glow-amber">
-                <div className="flex flex-col leading-tight">
-                  <span className="text-[9px] font-mono uppercase tracking-widest text-amber-300">MDR LIVE</span>
-                  <span className="text-sm font-mono font-bold tabular text-amber-300 text-glow">
-                    {derived.monetary_dilution_ratio_live.toFixed(3)}x
-                  </span>
-                  <span className="text-[8px] font-mono text-muted-foreground/70">computed</span>
+              <InfoTip tip="mdr_live" side="bottom">
+                <div className="flex items-center gap-2 px-2.5 py-1 rounded-sm border border-amber-500/50 bg-amber-500/10 shrink-0 glow-amber cursor-help">
+                  <div className="flex flex-col leading-tight">
+                    <span className="text-[9px] font-mono uppercase tracking-widest text-amber-300">MDR LIVE</span>
+                    <span className="text-sm font-mono font-bold tabular text-amber-300 text-glow">
+                      {derived.monetary_dilution_ratio_live.toFixed(3)}x
+                    </span>
+                    <span className="text-[8px] font-mono text-muted-foreground/70">computed</span>
+                  </div>
                 </div>
-              </div>
+              </InfoTip>
             )}
           </div>
 
@@ -499,6 +735,7 @@ export default function App() {
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <MetricCard
             title="Monetary Dilution Ratio"
+            tip="mdr"
             value={fmt(md?.current, 2)}
             unit="x"
             sub={`Peak: ${fmt(md?.peak, 2)}x  |  Initial: ${fmt(md?.initial, 2)}x  |  ${md?.series?.[0]?.q || ''} to ${md?.series?.[md.series.length - 1]?.q || ''}`}
@@ -510,6 +747,7 @@ export default function App() {
           />
           <MetricCard
             title="Cantillon Vector (Wealth Gap)"
+            tip="cantillon"
             value={pct(cv?.cantillon_gap, 1)}
             unit="gap"
             sub={`Assets ${pct(cv?.asset_growth)}  |  Real Wages ${pct(cv?.wage_growth)}  |  BCRA BS ${pct(cv?.balance_sheet_growth)}`}
@@ -520,6 +758,7 @@ export default function App() {
           />
           <MetricCard
             title="Fiscal Capture Ratio"
+            tip="fcr"
             value={fmt((fc?.ratio || 0) * 100, 1)}
             unit="%"
             sub={`Inflation Tax = ${fmt(fc?.inflation_tax_share, 1)}% of extraction  |  ${fmt(fc?.total_extraction_pct_gdp, 1)}% of GDP`}
@@ -563,7 +802,9 @@ export default function App() {
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <ArrowRight className="w-4 h-4 text-red-400 rotate-180" />
-                  <CardTitle className="text-sm font-mono uppercase tracking-widest text-red-300">Extraction Vector</CardTitle>
+                  <InfoTip tip="extraction" side="right">
+                    <CardTitle className="text-sm font-mono uppercase tracking-widest text-red-300 cursor-help border-b border-dotted border-red-500/40">Extraction Vector</CardTitle>
+                  </InfoTip>
                 </div>
                 <StatusPill label="CAPITAL FLOW OUT" color="red" />
               </div>
@@ -585,7 +826,9 @@ export default function App() {
                       (item) => item?.tax_type === 'inflation' ? '#ffb020' : '#3b82f6',
                       extDest.mode,
                     )}
-                  />
+                  >
+                    <Tooltip content={(props) => <TreemapTip {...props} items={extDest.extraction} label="Extraction" mode={extDest.mode} totalKey="tax_type" />} />
+                  </Treemap>
                 </ResponsiveContainer>
               )}
             </CardContent>
@@ -596,7 +839,9 @@ export default function App() {
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <ArrowRight className="w-4 h-4 text-amber-400" />
-                  <CardTitle className="text-sm font-mono uppercase tracking-widest text-amber-300">Destination :: Capital Captors</CardTitle>
+                  <InfoTip tip="destination" side="left">
+                    <CardTitle className="text-sm font-mono uppercase tracking-widest text-amber-300 cursor-help border-b border-dotted border-amber-500/40">Destination :: Capital Captors</CardTitle>
+                  </InfoTip>
                 </div>
                 <StatusPill label="CAPITAL FLOW IN" color="amber" />
               </div>
@@ -618,7 +863,9 @@ export default function App() {
                       (item) => COLORS_DEST[item?.sector] || '#64748b',
                       extDest.mode,
                     )}
-                  />
+                  >
+                    <Tooltip content={(props) => <TreemapTip {...props} items={extDest.destination} label="Destination" mode={extDest.mode} totalKey="sector" />} />
+                  </Treemap>
                 </ResponsiveContainer>
               )}
             </CardContent>
@@ -666,7 +913,9 @@ export default function App() {
           <CardHeader className="pb-2">
             <div className="flex items-center gap-2">
               <BarChart3 className="w-4 h-4 text-amber-400" />
-              <CardTitle className="text-sm font-mono uppercase tracking-widest text-amber-300">Sector Fiscal Capture Ratio</CardTitle>
+              <InfoTip tip="sector_capture" side="right">
+                <CardTitle className="text-sm font-mono uppercase tracking-widest text-amber-300 cursor-help border-b border-dotted border-amber-500/40">Sector Fiscal Capture Ratio</CardTitle>
+              </InfoTip>
             </div>
             <div className="text-[10px] font-mono text-muted-foreground">Negative = net EXTRACTOR from state  Positive = net BENEFICIARY of state</div>
           </CardHeader>
