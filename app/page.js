@@ -282,14 +282,57 @@ function TerminalHeader({ period, mode, setMode, tick }) {
   )
 }
 
-function PolicyPeriodSelector({ current, onChange }) {
+function PolicyPeriodSelector({ current, onChange, liveSync }) {
   return (
     <div className="border-b border-border/80 bg-background/80">
       <div className="container mx-auto px-4 py-3">
         <div className="flex items-center justify-between gap-4 flex-wrap">
-          <div>
-            <div className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground mb-1">Policy Period Selector</div>
-            <div className="text-xs text-slate-400">Compare capture &amp; dilution across administrations</div>
+          <div className="flex items-center gap-3">
+            <div>
+              <div className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground mb-1">Policy Period Selector</div>
+              <div className="text-xs text-slate-400">Compare capture &amp; dilution across administrations</div>
+            </div>
+            {liveSync && (
+              <HoverCard openDelay={80} closeDelay={80}>
+                <HoverCardTrigger asChild>
+                  <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-sm border border-emerald-500/40 bg-emerald-500/10 cursor-help">
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 blink" />
+                    <span className="text-[9px] font-mono uppercase tracking-widest text-emerald-400 font-bold">AUTO-SYNC {liveSync.quarter}</span>
+                  </div>
+                </HoverCardTrigger>
+                <HoverCardContent side="bottom" className="w-96 bg-card border-emerald-500/40 shadow-2xl p-3">
+                  <div className="flex items-center gap-2 mb-2 pb-2 border-b border-emerald-500/20">
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 blink" />
+                    <span className="text-[10px] font-mono uppercase tracking-widest text-emerald-400 font-bold">INFO :: Auto-Sync Active</span>
+                  </div>
+                  <p className="text-[11px] font-mono leading-relaxed text-slate-300 mb-2">
+                    The <span className="text-amber-300 font-bold">{liveSync.quarter}</span> data point is derived <span className="text-emerald-400">live from BCRA v4.0 API</span> and overrides any seed value. This makes the current Milei-era view zero-touch.
+                  </p>
+                  <div className="grid grid-cols-2 gap-x-3 gap-y-1 text-[10px] font-mono pt-2 border-t border-border/40">
+                    <span className="text-muted-foreground">Live quarter</span>
+                    <span className="text-right text-amber-300 tabular font-bold">{liveSync.quarter}</span>
+                    <span className="text-muted-foreground">BCRA data date</span>
+                    <span className="text-right text-slate-200 tabular">{liveSync.source_date}</span>
+                    <span className="text-muted-foreground">Base Monetaria</span>
+                    <span className="text-right text-slate-200 tabular">{liveSync.data?.mb?.toFixed(1)} T$</span>
+                    <span className="text-muted-foreground">Rem. Liabilities</span>
+                    <span className="text-right text-slate-200 tabular">{liveSync.data?.rl?.toFixed(2)} T$</span>
+                    <span className="text-muted-foreground">Reserves</span>
+                    <span className="text-right text-slate-200 tabular">{liveSync.data?.fx?.toFixed(1)} B$</span>
+                    <span className="text-muted-foreground">USD/ARS</span>
+                    <span className="text-right text-slate-200 tabular">{liveSync.data?.usd?.toFixed(2)}</span>
+                    <span className="text-muted-foreground">IPC YoY</span>
+                    <span className="text-right text-slate-200 tabular">{liveSync.data?.cpi?.toFixed(1)}%</span>
+                  </div>
+                  <div className="mt-2 pt-2 border-t border-border/40">
+                    <div className="text-[9px] font-mono uppercase tracking-wider text-muted-foreground mb-1">Notes</div>
+                    <p className="text-[10px] font-mono text-slate-400 leading-relaxed italic">
+                      Merval, real wage &amp; GDP are proxied from the last seed quarter until INDEC/ByMA connectors are wired. Cache TTL 5 min.
+                    </p>
+                  </div>
+                </HoverCardContent>
+              </HoverCard>
+            )}
           </div>
           <div className="flex items-center gap-1 bg-card border border-border rounded-sm p-1">
             {PERIODS.map((p) => (
@@ -664,10 +707,11 @@ export default function App() {
   const [flows, setFlows] = useState(null)
   const [extDest, setExtDest] = useState(null)
   const [series, setSeries] = useState([])
+  const [liveSync, setLiveSync] = useState(null)
   const [tick, setTick] = useState('')
   const [bcraLive, setBcraLive] = useState(null)
   const [bcraHistory, setBcraHistory] = useState(null)
-  const [bcraHistoryId, setBcraHistoryId] = useState(1) // Reservas default
+  const [bcraHistoryId, setBcraHistoryId] = useState(1)
   const [bcraLoading, setBcraLoading] = useState(false)
 
   useEffect(() => {
@@ -713,6 +757,7 @@ export default function App() {
       setFlows(f)
       setExtDest(e)
       setSeries(s.data || [])
+      setLiveSync(s.live_sync || m.live_sync || null)
     })
   }, [period, mode])
 
@@ -727,7 +772,7 @@ export default function App() {
   return (
     <div className="min-h-screen bg-background text-foreground scanline relative">
       <TerminalHeader period={period} mode={mode} setMode={setMode} tick={tick} />
-      <PolicyPeriodSelector current={period} onChange={setPeriod} />
+      <PolicyPeriodSelector current={period} onChange={setPeriod} liveSync={liveSync} />
       <LiveBcraTicker data={bcraLive} loading={bcraLoading} onRefresh={refreshBcra} />
 
       {/* KPI Row */}

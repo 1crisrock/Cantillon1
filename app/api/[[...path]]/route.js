@@ -34,9 +34,131 @@ function seriesForPeriod(periodId) {
   return QUARTERLY_SERIES.filter((r) => r.period === periodId)
 }
 
+// ---------- Live BCRA auto-sync helpers ----------
+const BCRA_LIVE_URL = 'https://api.bcra.gob.ar/estadisticas/v4.0/Monetarias?limit=1000'
+const AUTOSYNC_CACHE_TTL_MS = 5 * 60 * 1000
+
+// Extract latest values needed to synthesize a Milei quarter
+async function fetchBcraSnapshot() {
+  const r = await fetch(BCRA_LIVE_URL, {
+    signal: AbortSignal.timeout(9000),
+    headers: { 'Accept': 'application/json' },
+  })
+  if (!r.ok) throw new Error('BCRA HTTP ' + r.status)
+  const raw = await r.json()
+  const idx = new Map(raw.results.map((v) => [v.idVariable, v]))
+  return {
+    reservas: idx.get(1),        // M USD
+    usd_mayorista: idx.get(5),   // ARS
+    base_monetaria: idx.get(15), // M ARS
+    m2: idx.get(109),            // M ARS
+    ipc_yoy: idx.get(28),        // %
+    lebac: idx.get(156),         // M ARS
+    bopreal: idx.get(158),       // M ARS
+    pases: idx.get(151),         // M ARS
+    fetched_at: Date.now(),
+  }
+}
+
+function quarterFromDate(dateStr) {
+  const d = new Date(dateStr)
+  const y = d.getUTCFullYear()
+  const q = Math.floor(d.getUTCMonth() / 3) + 1
+  return `${y}-Q${q}`
+}
+
+// Build a Milei quarterly datapoint from live BCRA + last-seed proxy values for missing fields
+async function buildLiveMileiQuarter() {
+  const snap = await fetchBcraSnapshot()
+
+  const mb_m_ars = snap.base_monetaria?.ultValorInformado || 0
+  const rl_m_ars =
+    (snap.lebac?.ultValorInformado || 0) +
+    (snap.bopreal?.ultValorInformado || 0) +
+    (snap.pases?.ultValorInformado || 0)
+
+  const mb = +(mb_m_ars / 1e6).toFixed(3)  // T ARS
+  const rl = +(rl_m_ars / 1e6).toFixed(3)  // T ARS
+  const fx = +((snap.reservas?.ultValorInformado || 0) / 1000).toFixed(2)  // B USD
+  const usd = +(snap.usd_mayorista?.ultValorInformado || 0).toFixed(2)
+  const cpi = +(snap.ipc_yoy?.ultValorInformado || 0).toFixed(1)
+
+  const dataDate = snap.base_monetaria?.ultFechaInformada || snap.reservas?.ultFechaInformada
+  const q = quarterFromDate(dataDate || new Date().toISOString())
+
+  // Proxy missing values from the latest seed Milei quarter (merval, wage, gdp)
+  const mileiSeries = QUARTERLY_SERIES.filter((r) => r.period === 'milei')
+  const seedProxy = mileiSeries[mileiSeries.length - 1] || {}
+
+  return {
+    q,
+    period: 'milei',
+    mb,
+    rl,
+    fx,
+    cpi,
+    usd,
+    merval: seedProxy.merval,  // TODO: could wire ByMA API later
+    wage: seedProxy.wage,      // TODO: INDEC RIPTE
+    gdp: seedProxy.gdp,        // TODO: INDEC EMAE
+    __live: true,
+    __source_date: dataDate,
+    __fetched_at: new Date(snap.fetched_at).toISOString(),
+  }
+}
+
+// Cached wrapper - returns null if BCRA unreachable so caller can gracefully skip
+async function getLiveMileiQuarter() {
+  try {
+    const db = await getDb()
+    const cached = await db.collection('autosync_cache').findOne({ _id: 'milei_live_q' })
+    if (cached && (Date.now() - cached.fetched_at) < AUTOSYNC_CACHE_TTL_MS) {
+      return cached.data
+    }
+    const data = await buildLiveMileiQuarter()
+    await db.collection('autosync_cache').updateOne(
+      { _id: 'milei_live_q' },
+      { $set: { _id: 'milei_live_q', fetched_at: Date.now(), data } },
+      { upsert: true },
+    )
+    return data
+  } catch (e) {
+    console.warn('Live Milei autosync failed:', e?.message || e)
+    return null
+  }
+}
+
+// Merge live snapshot into a series (override matching quarter or append)
+function mergeLiveIntoSeries(series, liveQ) {
+  if (!liveQ) return { series, applied: false }
+  const idx = series.findIndex((r) => r.q === liveQ.q && r.period === liveQ.period)
+  const clone = series.slice()
+  if (idx >= 0) {
+    clone[idx] = { ...clone[idx], ...liveQ }
+  } else {
+    clone.push(liveQ)
+  }
+  return { series: clone, applied: true, quarter: liveQ.q, source_date: liveQ.__source_date }
+}
+
+// Get an augmented series where Milei's latest quarter is live-derived
+async function seriesForPeriodLive(periodId) {
+  const base = seriesForPeriod(periodId)
+  // Only augment when the requested period includes milei
+  if (periodId !== 'milei' && periodId !== 'all') {
+    return { series: base, live: null }
+  }
+  const liveQ = await getLiveMileiQuarter()
+  const merged = mergeLiveIntoSeries(base, liveQ)
+  return {
+    series: merged.series,
+    live: merged.applied ? { quarter: merged.quarter, source_date: merged.source_date, data: liveQ } : null,
+  }
+}
+
 // ---------- Metrics computation ----------
-function computeMetrics(periodId) {
-  const series = seriesForPeriod(periodId)
+function computeMetrics(periodId, seriesOverride) {
+  const series = seriesOverride || seriesForPeriod(periodId)
   if (series.length === 0) return null
 
   const latest = series[series.length - 1]
@@ -135,20 +257,34 @@ export async function GET(request, { params }) {
       return json({ periods: POLICY_PERIODS })
     }
 
-    // Quarterly time series (with optional USD normalization)
+    // Quarterly time series (with optional USD normalization + auto-sync last Milei quarter)
     if (path === 'timeseries') {
       const period = search.get('period') || 'all'
-      const mode = search.get('mode') || 'nominal' // nominal | usd
-      const series = normalizeSeries(seriesForPeriod(period), mode)
-      return json({ period, mode, count: series.length, data: series })
+      const mode = search.get('mode') || 'nominal'
+      const noLive = search.get('nolive') === '1'
+      const { series: liveSeries, live } = noLive
+        ? { series: seriesForPeriod(period), live: null }
+        : await seriesForPeriodLive(period)
+      const normalized = normalizeSeries(liveSeries, mode)
+      return json({
+        period,
+        mode,
+        count: normalized.length,
+        data: normalized,
+        live_sync: live,
+      })
     }
 
-    // Computed metrics
+    // Computed metrics (uses live-augmented series)
     if (path === 'metrics') {
       const period = search.get('period') || 'milei'
-      const metrics = computeMetrics(period)
+      const noLive = search.get('nolive') === '1'
+      const { series: liveSeries, live } = noLive
+        ? { series: seriesForPeriod(period), live: null }
+        : await seriesForPeriodLive(period)
+      const metrics = computeMetrics(period, liveSeries)
       if (!metrics) return json({ error: 'No data for period' }, 404)
-      return json({ period, metrics })
+      return json({ period, metrics, live_sync: live })
     }
 
     // Fiscal flows for Sankey
