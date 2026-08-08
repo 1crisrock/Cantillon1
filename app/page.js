@@ -19,108 +19,161 @@ import {
 
 const SankeyDiagram = dynamic(() => import('@/components/SankeyDiagram'), { ssr: false })
 
+import { REGIONAL } from '@/lib/regionalBenchmarks'
+
 // ============ TOOLTIP CONTENT LIBRARY ============
+// Concise concept lines + regional comparison bars for interpretive context
 const TIPS = {
   mdr: {
     title: 'Monetary Dilution Ratio',
-    body: 'Ratio between BCRA remunerated liabilities (LELIQ / Pases / LEFI / BOPREAL) and the monetary base. Above 1.0x means the "trapped" future purchasing power exceeds base money  a monetary time bomb.',
-    thresholds: [
-      { c: 'emerald', label: '< 0.5x', text: 'Contained' },
-      { c: 'amber',   label: '0.5 - 1.0x', text: 'Elevated overhang' },
-      { c: 'red',     label: '> 1.0x', text: 'Critical: trapped M > base money' },
-    ],
-    context: 'Argentina peak in 2023-Q4 hit 2.5x (Fernandez era) versus <0.05x currently (Milei quasi-fiscal cleanup via LEFI absorption).',
+    body: 'Remunerated liabilities relative to base money. Above 1.0x = trapped purchasing power exceeds circulating money.',
   },
   cantillon: {
     title: 'Cantillon Vector',
-    body: 'Named after economist Richard Cantillon (1730). Measures the gap between asset holders (Merval in USD) and wage earners (real median wage). New money reaches asset holders first while wages lag  transferring purchasing power upstream.',
-    thresholds: [
-      { c: 'emerald', label: '< 10%', text: 'Balanced' },
-      { c: 'amber',   label: '10-30%', text: 'Wealth transfer to holders' },
-      { c: 'red',     label: '> 30%', text: 'Severe capture' },
-    ],
-    context: 'Kirchner era shows the LARGEST recorded gap (+249%): assets recovered from crisis lows while wages recovered slowly. Milei era: +58% gap driven by equity rally.',
+    body: 'How much asset-holders outpaced wage-earners as new money entered the system. Coined by economist Richard Cantillon (1730).',
   },
   fcr: {
     title: 'Fiscal Capture Ratio',
-    body: 'Portion of total fiscal extraction that ends up as direct subsidies (Energy + Transport). High ratio = state is transferring purchasing power to specific sectors rather than providing public goods.',
-    thresholds: [
-      { c: 'emerald', label: '< 8%', text: 'Low sector capture' },
-      { c: 'amber',   label: '8-15%', text: 'Elevated' },
-      { c: 'red',     label: '> 15%', text: 'Heavy sector capture' },
-    ],
-    context: 'Kirchner era: 18.9% (peak subsidy state). Macri: 10.1%. Fernandez: 14.1%. Milei: 6.2% (subsidy withdrawal).',
+    body: 'Portion of total fiscal extraction transferred as direct subsidies to specific sectors.',
   },
   reservas: {
-    title: 'Reservas Internacionales BCRA',
-    body: 'Gross international reserves held by the Central Bank of Argentina. Includes gold, foreign currency, SDRs, IMF position, and swap with China. Net reserves are usually 20-40 B USD lower.',
+    title: 'Reservas Internacionales',
+    body: 'BCRA gross reserves. Include gold, currency, SDRs, IMF, and China swap. Net reserves usually 20-40 B$ lower.',
     src: 'BCRA v4.0 Monetarias / id=1',
   },
   usd_ars: {
-    title: 'Tipo de Cambio Mayorista',
-    body: 'Wholesale USD/ARS reference rate (Comunicacion "A" 3500). This is the official rate used for BCRA settlement and does not include CCL, MEP, or Blue premium.',
+    title: 'USD/ARS Mayorista',
+    body: 'Wholesale reference rate (Com. "A" 3500). Excludes CCL / MEP / Blue premium.',
     src: 'BCRA v4.0 Monetarias / id=5',
   },
   base_mon: {
     title: 'Base Monetaria',
-    body: 'Sum of currency in circulation + bank reserves at BCRA. Direct measure of money issuance. Expressed in millions of ARS.',
+    body: 'Currency in circulation + bank reserves at BCRA. Direct measure of money issuance.',
     src: 'BCRA v4.0 Monetarias / id=15',
   },
   m2: {
     title: 'M2  Broad Money',
-    body: 'Currency + demand deposits + savings deposits. Wider measure of money in the economy than base monetaria.',
+    body: 'Currency + demand + savings deposits. Includes credit-created money in the banking system.',
     src: 'BCRA v4.0 Monetarias / id=109',
   },
   ipc_yoy: {
     title: 'IPC Interanual',
-    body: 'Year-over-year change in the Consumer Price Index. Argentine peak of 289% (2024-Q1) has receded to ~33% (Milei disinflation).',
+    body: 'Year-over-year change in the Consumer Price Index reported by INDEC.',
     src: 'BCRA v4.0 Monetarias / id=28',
   },
   ipc_mom: {
     title: 'IPC Mensual',
-    body: 'Month-over-month change in CPI. Best short-term inflation indicator.',
+    body: 'Month-over-month change in CPI. Best short-term inflation gauge.',
     src: 'BCRA v4.0 Monetarias / id=27',
   },
   badlar: {
     title: 'Tasa BADLAR',
-    body: 'Wholesale time-deposit rate for deposits above 1 M ARS at private banks. Key monetary policy benchmark.',
+    body: 'Wholesale time-deposit rate for +1M ARS at private banks. Key policy transmission rate.',
     src: 'BCRA v4.0 Monetarias / id=7',
   },
   mdr_live: {
-    title: 'MDR (Live)',
-    body: 'Real-time Monetary Dilution Ratio computed from live BCRA feed: (LEBAC + BOPREAL + Pases entre terceros) / Base Monetaria.',
-    src: 'Composite of BCRA ids 156, 158, 151, 15',
+    title: 'MDR Live',
+    body: 'Real-time (LEBAC + BOPREAL + Pases) / Base Monetaria from BCRA feed.',
+    src: 'Composite BCRA ids 156 + 158 + 151 / 15',
   },
   real_term_toggle: {
     title: 'Real-Term Normalization',
-    body: 'When enabled, converts all nominal ARS values into hard-currency equivalent (USD billions) at a real-2024 reference rate of 1200 ARS/USD (blue-chip parity). Removes inflationary distortion across periods.',
+    body: 'When ON, converts nominal ARS to constant 2024-USD (~1200 ARS/USD blue-chip). Eliminates inflationary distortion across periods.',
   },
   extraction: {
     title: 'Extraction Vector',
-    body: 'Sum of ALL ways the state pulls capital from the private sector: traditional taxes (VAT, Income, Social Security, Duties) + hidden extractions (Inflation Tax, Financial Repression via forced holdings).',
+    body: 'All ways the state pulls capital: traditional taxes + inflation tax + financial repression.',
   },
   destination: {
-    title: 'Destination  Capital Captors',
-    body: 'Where the extracted capital ultimately lands. Grouped by beneficiary type: private beneficiaries (subsidized firms), financial beneficiaries (LELIQ/LEFI holders + bondholders), state apparatus (public employment + provinces), and social transfers (ANSES/pensions).',
+    title: 'Destination Panel',
+    body: 'Where extracted capital lands. Grouped by beneficiary type (private / financial / state / social).',
   },
   sector_capture: {
     title: 'Sector Fiscal Capture Ratio',
-    body: 'Net position of each sector against the state. NEGATIVE = sector is a net EXTRACTOR (contributes more via taxes/duties than it receives back). POSITIVE = sector is a net BENEFICIARY (receives more in subsidies/transfers than it pays).',
-    examples: [
-      { c: 'red',     text: 'Public Sector: +61-72% (top beneficiary, ANSES + wages)' },
-      { c: 'red',     text: 'Banking: highest during LELIQ era (58-63%)' },
-      { c: 'emerald', text: 'Agriculture: -8 to -42% (net extractor via retenciones)' },
-    ],
+    body: 'Net position vs the state. Negative = pays more than receives (EXTRACTOR). Positive = receives more (BENEFICIARY).',
   },
+}
+
+// Compact regional comparison bar
+function RegionalBenchmark({ tip, currentValue }) {
+  const bench = REGIONAL[tip]
+  if (!bench || !bench.series?.length) return null
+
+  const maxAbs = Math.max(...bench.series.map((r) => Math.abs(r.value)), 0.001)
+  const hasNegative = bench.series.some((r) => r.value < 0)
+
+  return (
+    <div className="pt-2 border-t border-border/40 space-y-1.5">
+      <div className="flex items-center justify-between">
+        <div className="text-[9px] font-mono uppercase tracking-widest text-cyan-400/80">Regional Benchmark</div>
+        <div className="text-[9px] font-mono text-muted-foreground">{bench.unit}</div>
+      </div>
+      <div className="space-y-1">
+        {bench.series.map((r, i) => {
+          const pct = (Math.abs(r.value) / maxAbs) * 100
+          const isHighlight = r.highlight
+          const isHistorical = r.historical
+          const isNeg = r.value < 0
+          const barColor = isHighlight
+            ? 'bg-amber-500/85'
+            : isHistorical
+              ? 'bg-slate-500/50'
+              : isNeg
+                ? 'bg-emerald-500/55'
+                : 'bg-cyan-400/50'
+          return (
+            <div key={i} className="grid grid-cols-[95px_1fr_54px] items-center gap-1.5">
+              <div className="text-[9px] font-mono truncate leading-tight">
+                <span className={`${isHighlight ? 'text-amber-300 font-bold' : isHistorical ? 'text-slate-500 italic' : 'text-slate-300'}`}>
+                  {r.country}
+                </span>
+                {r.sub && <div className="text-[8px] text-muted-foreground/70 truncate">{r.sub}</div>}
+              </div>
+              <div className={`relative h-3 bg-muted/30 rounded-sm overflow-hidden ${hasNegative ? '' : ''}`}>
+                {hasNegative ? (
+                  <>
+                    <div className="absolute inset-y-0 left-1/2 w-px bg-border/80" />
+                    <div
+                      className={`absolute top-0 h-full ${barColor}`}
+                      style={{
+                        width: `${pct / 2}%`,
+                        left: isNeg ? `${50 - pct / 2}%` : '50%',
+                      }}
+                    />
+                  </>
+                ) : (
+                  <div className={`absolute top-0 left-0 h-full ${barColor}`} style={{ width: `${pct}%` }} />
+                )}
+              </div>
+              <div className={`text-right text-[9px] font-mono tabular ${
+                isHighlight ? 'text-amber-300 font-bold' : isHistorical ? 'text-slate-500' : 'text-slate-400'
+              }`}>
+                {r.value >= 0 ? '' : '-'}{Math.abs(r.value)}{bench.unit === '%' || bench.unit.includes('%') ? '' : ''}
+              </div>
+            </div>
+          )
+        })}
+      </div>
+      {bench.insight && (
+        <div className="pt-1.5">
+          <p className="text-[10px] font-mono text-slate-400 leading-relaxed italic">
+            <span className="text-cyan-400/80 not-italic">// </span>
+            {bench.insight}
+          </p>
+        </div>
+      )}
+    </div>
+  )
 }
 
 function InfoTip({ tip, children, side = 'top' }) {
   const t = TIPS[tip]
   if (!t) return children
+  const hasRegional = REGIONAL[tip] && REGIONAL[tip].series?.length > 0
   return (
     <HoverCard openDelay={80} closeDelay={80}>
       <HoverCardTrigger asChild>{children}</HoverCardTrigger>
-      <HoverCardContent side={side} className="w-96 bg-card border-amber-500/40 shadow-2xl shadow-amber-500/10 p-0 overflow-hidden">
+      <HoverCardContent side={side} className="w-[440px] bg-card border-amber-500/40 shadow-2xl shadow-amber-500/10 p-0 overflow-hidden">
         <div className="p-3 border-b border-amber-500/20 bg-gradient-to-r from-amber-500/10 to-transparent">
           <div className="flex items-center gap-2">
             <span className="w-1.5 h-1.5 rounded-full bg-amber-400 blink" />
@@ -131,39 +184,9 @@ function InfoTip({ tip, children, side = 'top' }) {
         </div>
         <div className="p-3 space-y-2.5">
           <p className="text-[11px] leading-relaxed text-slate-300 font-mono">{t.body}</p>
-          {t.thresholds && (
-            <div className="space-y-1 pt-2 border-t border-border/40">
-              <div className="text-[9px] font-mono uppercase tracking-wider text-muted-foreground">Thresholds</div>
-              {t.thresholds.map((th, i) => (
-                <div key={i} className="flex items-center gap-2 text-[10px] font-mono">
-                  <span className={`px-1.5 py-0.5 rounded-sm border text-[9px] tabular ${
-                    th.c === 'red' ? 'bg-red-500/10 text-red-400 border-red-500/30' :
-                    th.c === 'amber' ? 'bg-amber-500/10 text-amber-400 border-amber-500/30' :
-                    'bg-emerald-500/10 text-emerald-400 border-emerald-500/30'
-                  }`}>{th.label}</span>
-                  <span className="text-slate-400">{th.text}</span>
-                </div>
-              ))}
-            </div>
-          )}
-          {t.examples && (
-            <div className="space-y-1 pt-2 border-t border-border/40">
-              <div className="text-[9px] font-mono uppercase tracking-wider text-muted-foreground">Historical Examples</div>
-              {t.examples.map((ex, i) => (
-                <div key={i} className={`text-[10px] font-mono leading-snug ${ex.c === 'red' ? 'text-amber-400' : 'text-emerald-400'}`}>
-                  {ex.text}
-                </div>
-              ))}
-            </div>
-          )}
-          {t.context && (
-            <div className="pt-2 border-t border-border/40">
-              <div className="text-[9px] font-mono uppercase tracking-wider text-muted-foreground mb-1">Context</div>
-              <p className="text-[10px] font-mono text-slate-400 leading-relaxed italic">{t.context}</p>
-            </div>
-          )}
+          {hasRegional && <RegionalBenchmark tip={tip} />}
           {t.src && (
-            <div className="pt-2 border-t border-border/40">
+            <div className="pt-1.5 border-t border-border/40">
               <div className="text-[9px] font-mono uppercase tracking-wider text-muted-foreground">Source</div>
               <p className="text-[10px] font-mono text-cyan-400/70">{t.src}</p>
             </div>
