@@ -173,7 +173,7 @@ function InfoTip({ tip, children, side = 'top' }) {
   return (
     <HoverCard openDelay={80} closeDelay={80}>
       <HoverCardTrigger asChild>{children}</HoverCardTrigger>
-      <HoverCardContent side={side} className="w-[440px] bg-card border-amber-500/40 shadow-2xl shadow-amber-500/10 p-0 overflow-hidden">
+      <HoverCardContent side={side} sideOffset={8} collisionPadding={16} avoidCollisions className="w-[440px] bg-card border-amber-500/40 shadow-2xl shadow-amber-500/10 p-0 overflow-hidden">
         <div className="p-3 border-b border-amber-500/20 bg-gradient-to-r from-amber-500/10 to-transparent">
           <div className="flex items-center gap-2">
             <span className="w-1.5 h-1.5 rounded-full bg-amber-400 blink" />
@@ -410,7 +410,7 @@ const SectorRow = ({ s }) => {
           </div>
         </div>
       </HoverCardTrigger>
-      <HoverCardContent side="right" className="w-80 bg-card border-amber-500/40 shadow-2xl p-3">
+      <HoverCardContent side="left" align="center" sideOffset={12} collisionPadding={16} avoidCollisions className="w-80 bg-card border-amber-500/40 shadow-2xl p-3">
         <div className="flex items-center gap-2 mb-2">
           <span className={`px-1.5 py-0.5 rounded-sm text-[9px] font-mono uppercase tracking-wider border ${
             isNet ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30' : 'bg-amber-500/10 text-amber-400 border-amber-500/30'
