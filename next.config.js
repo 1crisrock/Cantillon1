@@ -1,5 +1,18 @@
 const nextConfig = {
   output: 'standalone',
+  // Allow the Emergent preview domains to request Next.js dev/internal (/_next/*)
+  // resources cross-origin. Without this, Next 15.5 rejects those requests and
+  // lazily-imported (dynamic ssr:false) view chunks never load, leaving the page
+  // body blank while the statically-bundled layout still renders.
+  allowedDevOrigins: [
+    'next-charts-build.preview.emergentagent.com',
+    'next-charts-build.cluster-5.preview.emergentcf.cloud',
+    '*.preview.emergentagent.com',
+    '*.preview.emergentcf.cloud',
+    '*.emergentagent.com',
+    '*.emergentcf.cloud',
+    'localhost:3000',
+  ],
   images: {
     unoptimized: true,
     remotePatterns: [

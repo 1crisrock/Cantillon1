@@ -1,6 +1,9 @@
 import { NextResponse } from 'next/server'
-import { execFileSync } from 'child_process'
+import { execFile } from 'child_process'
+import { promisify } from 'util'
 import path from 'path'
+
+const execFileAsync = promisify(execFile)
 
 const APPS = ['a', 'b', 'c', 'all']
 const PERIODS = ['kirchner', 'macri', 'fernandez', 'milei', 'all']
@@ -74,7 +77,11 @@ export async function GET(request, { params }) {
   ]
 
   try {
-    const stdout = execFileSync('python3', args, {
+    // Async spawn (NOT execFileSync): the Python engine's data_loader fetches
+    // back from this same Next server (CANTILLON_API_URL default localhost:3000/api).
+    // A synchronous spawn would block the event loop and deadlock that self-call
+    // until it times out (~15s). execFile keeps the loop free to serve it.
+    const { stdout } = await execFileAsync('python3', args, {
       cwd,
       encoding: 'utf-8',
       timeout: 60000,
