@@ -30,6 +30,10 @@
     --chart-3: 160 84% 39%;
     --chart-4: 340 82% 60%;
     --chart-5: 280 65% 60%;
+    /* TradingView / Bloomberg finance palette */
+    --up: 163 90% 30%;
+    --down: 358 88% 58%;
+    --grid: 163 90% 40%;
     --radius: 0.375rem;
   }
   * {
@@ -51,6 +55,26 @@
       linear-gradient(rgba(255, 176, 32, 0.03) 1px, transparent 1px),
       linear-gradient(90deg, rgba(255, 176, 32, 0.03) 1px, transparent 1px);
     background-size: 40px 40px;
+  }
+  .grid-neon {
+    background-image:
+      linear-gradient(hsl(163 90% 40% / 0.05) 1px, transparent 1px),
+      linear-gradient(90deg, hsl(163 90% 40% / 0.05) 1px, transparent 1px),
+      linear-gradient(hsl(163 90% 40% / 0.02) 1px, transparent 1px),
+      linear-gradient(90deg, hsl(163 90% 40% / 0.02) 1px, transparent 1px);
+    background-size: 80px 80px, 80px 80px, 16px 16px, 16px 16px;
+  }
+  .value-up {
+    color: hsl(var(--up));
+  }
+  .value-down {
+    color: hsl(var(--down));
+  }
+  .text-glow-up {
+    text-shadow: 0 0 12px hsl(163 90% 30% / 0.6);
+  }
+  .text-glow-down {
+    text-shadow: 0 0 12px hsl(358 88% 58% / 0.6);
   }
   .glow-amber {
     box-shadow: 0 0 20px rgba(255, 176, 32, 0.15), inset 0 0 20px rgba(255, 176, 32, 0.02);
