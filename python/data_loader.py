@@ -270,11 +270,20 @@ class CantillonClient:
 
 
 class DataSource:
-    """Facade the metric engines depend on. API-first with seed fallback."""
+    """Facade the metric engines depend on. API-first with seed fallback.
 
-    def __init__(self, api_url: str | None = None, prefer_api: bool = True):
-        self.client = CantillonClient(api_url) if api_url or prefer_api else None
-        self.prefer_api = prefer_api
+    Set env CANTILLON_PREFER_API=0 to force seed-only (no HTTP self-calls back
+    into the Next.js server). The bridge route uses this: when the engine is
+    spawned to serve a browser request, re-entrant self-calls into the same dev
+    server can stall the original response, so we read the embedded dataset
+    directly (the metric math mirrors the API exactly).
+    """
+
+    def __init__(self, api_url: str | None = None, prefer_api: bool | None = None):
+        if prefer_api is None:
+            prefer_api = os.environ.get("CANTILLON_PREFER_API", "1") != "0"
+        self.client = CantillonClient(api_url) if (api_url or prefer_api) else None
+        self.prefer_api = prefer_api and self.client is not None
 
     def _resolve(self, api_call, seed_call):
         if self.prefer_api:

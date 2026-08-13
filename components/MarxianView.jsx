@@ -4,27 +4,31 @@
 // Live data from /api/python?app=b — re-fetches automatically when the global
 // controls change (policy period, USD/ARS parity, real-term slider).
 
-import { useQuery } from '@tanstack/react-query'
-import dynamic from 'next/dynamic'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Loader2, AlertTriangle, Factory, Scale, Users } from 'lucide-react'
 import { useDashboard } from '@/lib/dashboard-context'
-import { KpiCard, fetchPayload } from '@/components/PythonEngineView'
-
-const OccChart = dynamic(() => import('@/components/MarxianCharts').then((m) => ({ default: m.OccChart })), { ssr: false })
-const ExploitationMatrix = dynamic(() => import('@/components/MarxianCharts').then((m) => ({ default: m.ExploitationMatrix })), { ssr: false })
-const ReserveArmyChart = dynamic(() => import('@/components/MarxianCharts').then((m) => ({ default: m.ReserveArmyChart })), { ssr: false })
+import { KpiCard, useEnginePayload } from '@/components/PythonEngineView'
+import InfoTip from '@/components/InfoTip'
+import { MARXIAN_KPI_TIPS, MARXIAN_PANEL_TIPS } from '@/lib/constants/engineTips'
+import { OccChart, ExploitationMatrix, ReserveArmyChart } from '@/components/MarxianCharts'
 
 const CARD_TITLE = 'text-xs font-mono uppercase tracking-widest text-amber-300'
+
+// Card title with an optional "INFO ::" hover tooltip (dotted underline + ?).
+function TipTitle({ tip, children }) {
+  const title = (
+    <CardTitle className={`${CARD_TITLE} ${tip ? 'inline-flex items-center gap-1 cursor-help border-b border-dotted border-amber-500/30' : ''}`}>
+      {children}
+      {tip && <span className="text-[9px] text-amber-500/70">?</span>}
+    </CardTitle>
+  )
+  return tip ? <InfoTip tip={tip}>{title}</InfoTip> : title
+}
 
 export default function MarxianView() {
   const { period, mode, realTerm } = useDashboard()
 
-  const { data, isPending, isError, error, refetch } = useQuery({
-    queryKey: ['python-b', period, mode, realTerm],
-    queryFn: () => fetchPayload('b', period, mode, realTerm),
-    staleTime: 0,
-  })
+  const { data, isPending, isError, error, refetch } = useEnginePayload('b', { period, mode, realTerm })
 
   const payload = data?.payload
   const kpis = payload?.kpis || []
@@ -80,7 +84,7 @@ export default function MarxianView() {
           {/* KPI grid */}
           {kpis.length > 0 && (
             <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3 mb-5">
-              {kpis.map((k) => <KpiCard key={k.key} k={k} />)}
+              {kpis.map((k) => <KpiCard key={k.key} k={k} tip={MARXIAN_KPI_TIPS[k.key]} />)}
             </div>
           )}
 
@@ -90,7 +94,7 @@ export default function MarxianView() {
               <CardHeader className="pb-2">
                 <div className="flex items-center gap-2">
                   <Factory className="w-4 h-4 text-cyan-400" />
-                  <CardTitle className={CARD_TITLE}>Organic Composition of Capital · c/v</CardTitle>
+                  <TipTitle tip={MARXIAN_PANEL_TIPS.occ}>Organic Composition of Capital · c/v</TipTitle>
                 </div>
                 <div className="text-[9px] font-mono text-muted-foreground">
                   Constant vs variable capital per quarter — rising = capital displacing labor
@@ -106,7 +110,7 @@ export default function MarxianView() {
               <CardHeader className="pb-2">
                 <div className="flex items-center gap-2">
                   <Scale className="w-4 h-4 text-amber-400" />
-                  <CardTitle className={CARD_TITLE}>Rate of Exploitation · s/v indicator matrix</CardTitle>
+                  <TipTitle tip={MARXIAN_PANEL_TIPS.exploitation}>Rate of Exploitation · s/v indicator matrix</TipTitle>
                 </div>
                 <div className="text-[9px] font-mono text-muted-foreground">
                   Quarterly value decomposition; colored cells flag exploitation (s/v), composition (c/v) and profitability (p′)
@@ -124,7 +128,7 @@ export default function MarxianView() {
               <div className="flex items-center justify-between flex-wrap gap-2">
                 <div className="flex items-center gap-2">
                   <Users className="w-4 h-4 text-red-400" />
-                  <CardTitle className={CARD_TITLE}>Relative Surplus Population · Industrial Reserve Army</CardTitle>
+                  <TipTitle tip={MARXIAN_PANEL_TIPS.reserve_army}>Relative Surplus Population · Industrial Reserve Army</TipTitle>
                 </div>
                 <div className="text-[9px] font-mono text-muted-foreground">
                   custom index · 100 = series start · wage-pressure 0.6 · activity-slack 0.25 · inflation-lag 0.15

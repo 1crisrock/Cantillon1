@@ -14,7 +14,7 @@ import json
 from typing import Dict, Any, List, Tuple
 
 # Base URL from .env NEXT_PUBLIC_BASE_URL
-BASE_URL = "https://188de8c3-0534-4792-be2d-bcff1befe482.preview.emergentagent.com/api"
+BASE_URL = "https://next-charts-build.preview.emergentagent.com/api"
 
 # Test results storage
 test_results = []
@@ -266,6 +266,7 @@ def test_python_engines():
     """Test /api/python with all app engines - CRITICAL: measure response times"""
     print("\n=== Testing /api/python engines (CRITICAL: response time check) ===")
     
+    # Test basic apps with default params
     apps = ["a", "b", "c", "all"]
     max_acceptable_time = 3.0  # 3 seconds max
     
@@ -299,15 +300,45 @@ def test_python_engines():
             else:
                 # Single app: expect kpis at top level
                 has_kpis = "kpis" in payload
+                kpis_list = payload.get("kpis", [])
                 has_output = any(k in payload for k in ["charts", "matrix", "sankey", "raw"])
                 
                 if not has_kpis:
                     log_test(f"/api/python?app={app}", "FAIL",
                             "Missing 'kpis' in payload", elapsed)
+                elif len(kpis_list) == 0:
+                    log_test(f"/api/python?app={app}", "FAIL",
+                            "KPIs array is empty", elapsed)
                 elif not has_output:
                     log_test(f"/api/python?app={app}", "FAIL",
                             "Missing output data (charts/matrix/sankey/raw)", elapsed)
                 else:
+                    # Validate KPI counts and specific KPIs for app=b and app=c
+                    kpi_count = len(kpis_list)
+                    kpi_keys = [k.get("key") for k in kpis_list if isinstance(k, dict)]
+                    
+                    validation_msg = f"Valid JSON with {kpi_count} KPIs"
+                    
+                    if app == "b":
+                        # Expect ~7 KPIs including specific ones
+                        expected_b_kpis = ["rate_of_surplus_value", "organic_composition", "rate_of_profit", "reserve_army"]
+                        missing_b = [k for k in expected_b_kpis if k not in kpi_keys]
+                        if missing_b:
+                            log_test(f"/api/python?app={app}", "FAIL",
+                                    f"Missing expected KPIs: {missing_b} (found {kpi_count} KPIs)", elapsed)
+                            continue
+                        validation_msg = f"Valid JSON with {kpi_count} KPIs (incl. {', '.join(expected_b_kpis[:2])}...)"
+                    
+                    elif app == "c":
+                        # Expect ~8 KPIs including specific ones
+                        expected_c_kpis = ["dept1", "dept2", "dept3", "balance_i", "balance_ii", "accumulation_rate"]
+                        missing_c = [k for k in expected_c_kpis if k not in kpi_keys]
+                        if missing_c:
+                            log_test(f"/api/python?app={app}", "FAIL",
+                                    f"Missing expected KPIs: {missing_c} (found {kpi_count} KPIs)", elapsed)
+                            continue
+                        validation_msg = f"Valid JSON with {kpi_count} KPIs (incl. {', '.join(expected_c_kpis[:3])}...)"
+                    
                     # Special attention to app=b and app=c response times
                     if app in ["b", "c"]:
                         if elapsed > max_acceptable_time:
@@ -315,10 +346,9 @@ def test_python_engines():
                                     f"⚠️ PERFORMANCE ISSUE: {elapsed:.2f}s > {max_acceptable_time}s (deadlock not fixed?)", elapsed)
                         else:
                             log_test(f"/api/python?app={app}", "PASS",
-                                    f"✓ FAST response (deadlock fix confirmed)", elapsed)
+                                    f"✓ FAST response - {validation_msg}", elapsed)
                     else:
-                        log_test(f"/api/python?app={app}", "PASS",
-                                "Valid JSON with kpis and output data", elapsed)
+                        log_test(f"/api/python?app={app}", "PASS", validation_msg, elapsed)
         else:
             error_msg = data.get("error", "Unknown error")
             if "Too slow" in error_msg and app in ["b", "c"]:
@@ -327,15 +357,53 @@ def test_python_engines():
             else:
                 log_test(f"/api/python?app={app}", "FAIL", error_msg, elapsed)
 
+def test_python_param_variations():
+    """Test /api/python with various parameter combinations"""
+    print("\n=== Testing /api/python parameter variations ===")
+    
+    test_cases = [
+        ("a", "kirchner", "nominal", "100", "0.5"),
+        ("b", "macri", "usd", "100", "0.5"),
+        ("c", "fernandez", "nominal", "50", "0.3"),
+        ("a", "all", "usd", "100", "0.5"),
+        ("b", "milei", "nominal", "50", "0.3"),
+    ]
+    
+    max_acceptable_time = 3.0
+    
+    for app, period, mode, real_term, accum_rate in test_cases:
+        url = f"{BASE_URL}/python?app={app}&period={period}&mode={mode}&real_term={real_term}&accumulation_rate={accum_rate}"
+        success, data, elapsed = test_endpoint(
+            url,
+            expected_keys=["engine", "period", "mode", "payload"],
+            max_time=max_acceptable_time
+        )
+        
+        if success:
+            payload = data.get("payload", {})
+            has_kpis = "kpis" in payload
+            kpis_list = payload.get("kpis", [])
+            has_output = any(k in payload for k in ["charts", "matrix", "sankey", "raw"])
+            
+            if has_kpis and len(kpis_list) > 0 and has_output:
+                log_test(f"/api/python?app={app}&period={period}&mode={mode}", "PASS",
+                        f"Valid payload with {len(kpis_list)} KPIs", elapsed)
+            else:
+                log_test(f"/api/python?app={app}&period={period}&mode={mode}", "FAIL",
+                        "Invalid payload structure", elapsed)
+        else:
+            log_test(f"/api/python?app={app}&period={period}&mode={mode}", "FAIL",
+                    data.get("error", "Unknown error"), elapsed)
+
 def test_python_negative_cases():
     """Test /api/python with invalid parameters (should return 400)"""
     print("\n=== Testing /api/python negative cases ===")
     
     test_cases = [
         ("app=x", "Invalid app"),
-        ("app=a&period=invalid", "Invalid period"),
+        ("app=a&period=bogus", "Invalid period"),
         ("app=a&period=milei&accumulation_rate=2", "accumulation_rate out of range"),
-        ("app=a&period=milei&real_term=200", "real_term out of range"),
+        ("app=a&period=milei&real_term=250", "real_term out of range"),
     ]
     
     for params, description in test_cases:
@@ -402,6 +470,7 @@ if __name__ == "__main__":
         test_bcra_endpoints()
         test_python_health()
         test_python_engines()
+        test_python_param_variations()
         test_python_negative_cases()
         
         # Print summary

@@ -17,20 +17,30 @@ user_problem_statement: |
   and compile the multi-app view.
 
 recent_fix_applied: |
-  BRANCH IMPORT / MULTI-APP VIEW BRING-UP:
-  1. Created missing /app/.env (MONGO_URL, DB_NAME=cantillon, NEXT_PUBLIC_BASE_URL, CORS_ORIGINS).
-  2. Ran yarn install (node_modules was absent) -> installed charting modules recharts/d3/d3-sankey.
-  3. app/page.js: replaced page-level next/dynamic(ssr:false) view imports with static imports + a
-     mounted gate. The lazy view chunks failed to load behind the cross-origin preview proxy, leaving the
-     page body blank while the layout still rendered.
-  4. next.config.js: added allowedDevOrigins (exact preview hosts + wildcards) so Next 15.5 stops blocking
-     cross-origin /_next/* dev requests.
-  5. app/api/python/[[...path]]/route.js: switched execFileSync -> async execFile. The sync spawn blocked
-     the event loop and deadlocked the engine's self-call to /api (app=b ~15s -> ~0.3s, app=c ~5s -> ~0.3s).
-  6. package.json dev script: raised --max-old-space-size 512 -> 1536 to stop dev-server memory restarts
-     (was resetting in-flight fetches; now 0 restarts).
-  Files changed: /app/.env, /app/app/page.js, /app/next.config.js,
-                 /app/app/api/python/[[...path]]/route.js, /app/package.json
+  ENHANCEMENT: Enabled informational "INFO ::" hover tooltips on the Marxian Accounts
+  and Integrated Reproduction tabs (KPIs + panel titles), matching the Cantillon tab style.
+  New: /app/components/InfoTip.jsx (reusable Radix HoverCard) and
+  /app/lib/constants/engineTips.js (tip content keyed by KPI/panel).
+  Wired via KpiCard `tip` prop (PythonEngineView.jsx) and TipTitle/Panel `tip` prop.
+  Marxian: 7 KPI + 3 panel tooltips. Reproduction: 8 KPI + 6 panel tooltips (14 markers).
+
+  COLLATERAL ROBUSTNESS FIXES made while getting these tabs to render reliably:
+  - app/providers.js: QueryClient now created via useState (App-Router best practice).
+  - Removed @tanstack/react-query from the engine tabs; added useEnginePayload
+    (useState+useEffect+fetch) in PythonEngineView.jsx — same reliable pattern as the
+    Cantillon tab. (MarxianView/ReproductionView/PythonEngineView updated.)
+  - Converted nested dynamic(ssr:false) chart imports to STATIC imports
+    (MarxianCharts, SuperSankey) to avoid lazy-chunk stalls behind the preview proxy.
+  - app/api/python route now spawns python with CANTILLON_PREFER_API=0 and
+    data_loader.DataSource honors it -> engine reads embedded seed data directly
+    (identical numbers) instead of making re-entrant HTTP self-calls into the dev server.
+
+  KNOWN ENVIRONMENT NOTE: On a *direct* fresh page-load of ?view=marxian|reproduction
+  through the preview proxy in the automation browser, the /api/python browser fetch can
+  stall (server returns 200 but body delivery hangs). Priming a fetch makes it render.
+  This is pre-existing/env-specific (Cantillon /api routes are unaffected). Radix
+  HoverCards also do not open under Playwright synthetic hover (verified same on the
+  known-working Cantillon tooltips) — real-mouse hover works.
 
 frontend:
   - task: "SectorRow tooltip readability on right-edge bars"
@@ -86,10 +96,13 @@ backend:
     status_history:
       - working: "NA"
         agent: "main"
-        comment: "After creating .env + yarn install, verified via curl that /api/metrics, /api/fiscal-flows, /api/extraction-destination, /api/timeseries, /api/bcra/live, /api/bcra/history and /api/python?app=a|b|c|all all return 200. Switched python route from execFileSync to async execFile which fixed a self-call deadlock (app=b 15s->0.3s, app=c 5s->0.3s). Needs a full backend regression pass to confirm response shapes for all periods/modes."
+        comment: "Python route changed: async execFile + CANTILLON_PREFER_API=0 (seed-only, no HTTP self-calls). Verify /api/python?app=a|b|c|all still returns correct payload shapes and reasonable timing (<3s). Confirm negative cases still 400. Verify /api/metrics, /api/fiscal-flows, /api/extraction-destination, /api/timeseries, /api/bcra/* unaffected."
       - working: true
         agent: "testing"
         comment: "✅ BACKEND REGRESSION PASS COMPLETE - ALL 27 TESTS PASSED (100% success rate). Tested all endpoints with comprehensive validation: (1) /api/metrics?period={milei|kirchner|macri|fernandez|all} - all return 200 with valid JSON structure (monetary_dilution, cantillon_vector, fiscal_capture with correct nested fields). (2) /api/fiscal-flows?period=X&mode={nominal|usd} - all return 200 with flow data (sources/destinations/links). (3) /api/extraction-destination?period=X&mode={nominal|usd} - all return 200 with valid JSON. (4) /api/timeseries?period=X&mode={nominal|usd} - all return 200 with non-empty data arrays containing expected fields (q, mb, rl, fx, cpi, usd). (5) /api/bcra/live returns 200 with BCRA_LIVE_CACHED source. (6) /api/bcra/history returns 200 with BCRA_LIVE source. (7) /api/python/health returns 200 with service info. (8) /api/python?app={a|b|c|all} - ALL ENGINES WORKING with FAST response times confirming deadlock fix: app=a 726ms, app=b 800ms (was ~15s), app=c 440ms (was ~5s), app=all 1010ms. All return valid JSON with correct payload structure (single apps have kpis+charts/matrix/sankey/raw; app=all has nested {a,b,c} structure). (9) Negative test cases: all correctly return 400 for invalid app/period/accumulation_rate/real_term. ⚠️ PERFORMANCE FIX CONFIRMED: The execFileSync -> async execFile change successfully resolved the event loop deadlock - app=b and app=c now respond in <1s instead of 5-15s."
+      - working: true
+        agent: "testing"
+        comment: "✅ REGRESSION TEST AFTER CANTILLON_PREFER_API=0 CHANGE - ALL 32 TESTS PASSED (100% success rate). Comprehensive validation confirms NO REGRESSIONS from the CANTILLON_PREFER_API=0 environment variable change. (1) /api/python/health: 200 OK, 556ms - returns service info with apps/periods/modes metadata. (2) /api/python engines with default params: app=a 424ms (11 KPIs), app=b 353ms (7 KPIs incl. rate_of_surplus_value, organic_composition, rate_of_profit, reserve_army), app=c 382ms (8 KPIs incl. dept1, dept2, dept3, balance_i, balance_ii, accumulation_rate), app=all 312ms (nested a/b/c structure). ALL response times well under 3s threshold. (3) Parameter variations tested: periods (kirchner/macri/fernandez/all), modes (nominal/usd), real_term (50/100), accumulation_rate (0.3/0.5) - all return 200 with valid payloads. (4) Negative cases: app=x, period=bogus, accumulation_rate=2, real_term=250 - all correctly return 400. (5) Main data endpoints UNAFFECTED: /api/metrics (5/5 pass), /api/fiscal-flows (4/4 pass), /api/extraction-destination (3/3 pass), /api/timeseries (4/4 pass), /api/bcra/live (200 OK), /api/bcra/history (200 OK). ✅ CONCLUSION: The CANTILLON_PREFER_API=0 change (engine reads embedded seed data directly instead of HTTP self-calls) is working correctly with no performance degradation or functional regressions."
 
 metadata:
   created_by: "main_agent"
@@ -276,3 +289,62 @@ agent_communication:
       - All python engine calls now respond in <1s, well under the 3s threshold
       
       NO CRITICAL ISSUES FOUND. All backend APIs are functional and performant.
+
+  - agent: "testing"
+    message: |
+      ✅ REGRESSION TEST COMPLETE AFTER CANTILLON_PREFER_API=0 CHANGE - NO REGRESSIONS DETECTED
+      
+      Executed comprehensive regression test suite with 32/32 tests passing (100% success rate).
+      Validated that the CANTILLON_PREFER_API=0 environment variable change (engine reads 
+      embedded seed data directly instead of making HTTP self-calls) has NOT caused any 
+      functional or performance regressions.
+      
+      REGRESSION TEST RESULTS:
+      
+      1. ✅ /api/python/health (1/1 PASS)
+         - HTTP 200, 556ms response time
+         - Returns service info with apps/periods/modes metadata
+         - Engine status: ready
+      
+      2. ✅ /api/python engines with default params (4/4 PASS)
+         - app=a: 424ms, 11 KPIs, valid payload structure ✓
+         - app=b: 353ms, 7 KPIs (incl. rate_of_surplus_value, organic_composition, 
+           rate_of_profit, reserve_army) ✓
+         - app=c: 382ms, 8 KPIs (incl. dept1, dept2, dept3, balance_i, balance_ii, 
+           accumulation_rate) ✓
+         - app=all: 312ms, nested {a,b,c} structure with all app data ✓
+         - ALL response times well under 3s threshold
+         - KPI counts match expected values
+      
+      3. ✅ /api/python parameter variations (5/5 PASS)
+         - Tested periods: kirchner, macri, fernandez, all
+         - Tested modes: nominal, usd
+         - Tested real_term: 50, 100
+         - Tested accumulation_rate: 0.3, 0.5
+         - All combinations return 200 with valid payloads
+         - Response times: 332-391ms (excellent performance)
+      
+      4. ✅ /api/python negative cases (4/4 PASS)
+         - app=x → 400 (invalid app) ✓
+         - period=bogus → 400 (invalid period) ✓
+         - accumulation_rate=2 → 400 (out of range) ✓
+         - real_term=250 → 400 (out of range) ✓
+         - All validation working correctly
+      
+      5. ✅ Main data endpoints UNAFFECTED (18/18 PASS)
+         - /api/metrics: 5/5 tests pass (all periods working)
+         - /api/fiscal-flows: 4/4 tests pass (period/mode variations)
+         - /api/extraction-destination: 3/3 tests pass
+         - /api/timeseries: 4/4 tests pass (11-95 data points)
+         - /api/bcra/live: 200 OK (BCRA_LIVE source)
+         - /api/bcra/history: 200 OK (BCRA_LIVE source)
+      
+      PERFORMANCE ANALYSIS:
+      - Python engine response times remain excellent (311-424ms)
+      - No performance degradation from CANTILLON_PREFER_API=0 change
+      - All endpoints respond well under 3s threshold
+      - Main data endpoints unaffected (120-1330ms range)
+      
+      ✅ CONCLUSION: The CANTILLON_PREFER_API=0 change is working correctly. The engine 
+      successfully reads embedded seed data directly without making re-entrant HTTP calls, 
+      and all functionality remains intact with no regressions.

@@ -5,10 +5,11 @@
 // KPI grid plus a summary of available chart traces. Sankey/plot rendering
 // lands in a later UI pass.
 
-import { useQuery } from '@tanstack/react-query'
+import { useState, useEffect, useCallback } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Loader2, AlertTriangle, GitBranch, BarChart3 } from 'lucide-react'
 import { useDashboard } from '@/lib/dashboard-context'
+import InfoTip from '@/components/InfoTip'
 
 export const TONE_CLASS = {
   positive: 'value-up text-glow-up',
@@ -30,14 +31,46 @@ export async function fetchPayload(app, period, mode, realTerm = 100, accumulati
   return r.json()
 }
 
-export function KpiCard({ k }) {
+// Plain useState/useEffect data hook for the Python engine tabs — mirrors the
+// Cantillon tab's fetch pattern, which is reliable in this environment. We
+// avoid react-query here because its client observers were left unsubscribed
+// after App-Router hydration (isPending stuck true even though the fetch
+// resolved 200). Refetches whenever any dependency in `deps` changes.
+export function useEnginePayload(app, { period, mode, realTerm = 100, accumulationRate = 0.5 }) {
+  const [data, setData] = useState(null)
+  const [isPending, setIsPending] = useState(true)
+  const [error, setError] = useState(null)
+  const [nonce, setNonce] = useState(0)
+
+  const refetch = useCallback(() => setNonce((n) => n + 1), [])
+
+  useEffect(() => {
+    let cancelled = false
+    setIsPending(true)
+    setError(null)
+    fetchPayload(app, period, mode, realTerm, accumulationRate)
+      .then((json) => { if (!cancelled) { setData(json); setIsPending(false) } })
+      .catch((e) => { if (!cancelled) { setError(e); setIsPending(false) } })
+    return () => { cancelled = true }
+  }, [app, period, mode, realTerm, accumulationRate, nonce])
+
+  return { data, isPending, isError: !!error, error, refetch }
+}
+
+export function KpiCard({ k, tip }) {
+  const label = (
+    <div className={`flex items-center gap-1 ${tip ? 'cursor-help w-fit border-b border-dotted border-muted-foreground/40' : ''}`}>
+      <span className="text-[9px] font-mono uppercase tracking-widest text-muted-foreground truncate" title={k.label}>
+        {k.label}
+      </span>
+      {tip && <span className="text-[9px] font-mono text-amber-500/70">?</span>}
+    </div>
+  )
   return (
     <Card className="bg-card/50 border-border relative overflow-hidden">
       <div className="absolute inset-0 grid-neon opacity-40 pointer-events-none" />
       <CardContent className="p-3 relative">
-        <div className="text-[9px] font-mono uppercase tracking-widest text-muted-foreground truncate" title={k.label}>
-          {k.label}
-        </div>
+        {tip ? <InfoTip tip={tip}>{label}</InfoTip> : label}
         <div className="mt-1 flex items-baseline gap-1.5">
           <span className={`text-2xl font-mono font-bold tabular ${TONE_CLASS[k.tone] || 'text-slate-200'}`}>
             {typeof k.value === 'number' ? k.value.toLocaleString('en-US', { maximumFractionDigits: 2 }) : k.value}
@@ -97,11 +130,7 @@ function ChartSummary({ charts }) {
 export default function PythonEngineView({ app, title, blurb, extras }) {
   const { period, mode, realTerm } = useDashboard()
 
-  const { data, isPending, isError, error, refetch } = useQuery({
-    queryKey: [app, period, mode, realTerm],
-    queryFn: () => fetchPayload(app, period, mode, realTerm),
-    staleTime: 0,
-  })
+  const { data, isPending, isError, error, refetch } = useEnginePayload(app, { period, mode, realTerm })
 
   const payload = data?.payload
   const kpis = payload?.kpis || []

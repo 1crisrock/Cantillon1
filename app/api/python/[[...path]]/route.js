@@ -81,11 +81,16 @@ export async function GET(request, { params }) {
     // back from this same Next server (CANTILLON_API_URL default localhost:3000/api).
     // A synchronous spawn would block the event loop and deadlock that self-call
     // until it times out (~15s). execFile keeps the loop free to serve it.
+    // CANTILLON_PREFER_API=0 makes the engine read the embedded dataset directly
+    // instead of making re-entrant HTTP self-calls, which (during a concurrent
+    // browser page load) could stall this response so the client fetch never
+    // resolves. The seed math mirrors the API exactly.
     const { stdout } = await execFileAsync('python3', args, {
       cwd,
       encoding: 'utf-8',
       timeout: 60000,
       maxBuffer: 64 * 1024 * 1024,
+      env: { ...process.env, CANTILLON_PREFER_API: '0' },
     })
     return json(JSON.parse(stdout))
   } catch (e) {

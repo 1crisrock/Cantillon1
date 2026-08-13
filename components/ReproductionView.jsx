@@ -10,15 +10,14 @@
 //   * Detailed pipeline edge list
 
 import { useState } from 'react'
-import { useQuery } from '@tanstack/react-query'
-import dynamic from 'next/dynamic'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Loader2, AlertTriangle, GitBranch, Repeat, Grid3X3, Layers, ArrowLeftRight, Scale } from 'lucide-react'
 import { useDashboard } from '@/lib/dashboard-context'
-import { KpiCard, fetchPayload } from '@/components/PythonEngineView'
+import { KpiCard, useEnginePayload } from '@/components/PythonEngineView'
+import InfoTip from '@/components/InfoTip'
+import { REPRODUCTION_KPI_TIPS, REPRODUCTION_PANEL_TIPS } from '@/lib/constants/engineTips'
 import { REPRODUCTION } from '@/lib/constants/testIds'
-
-const SuperSankey = dynamic(() => import('@/components/SuperSankey'), { ssr: false })
+import SuperSankey from '@/components/SuperSankey'
 
 const CARD_TITLE = 'text-xs font-mono uppercase tracking-widest text-amber-300'
 const fmt = (n, d = 2) =>
@@ -30,13 +29,19 @@ const DEPT_META = [
   { id: '3', short: 'Dept III', label: 'Dept III — Money / Finance / State', color: '#f6465d', tint: 'text-red-400 border-red-500/40 bg-red-500/10' },
 ]
 
-function Panel({ icon: Icon, title, sub, children, className = '', ...rest }) {
+function Panel({ icon: Icon, title, sub, tip, children, className = '', ...rest }) {
+  const titleEl = (
+    <CardTitle className={`${CARD_TITLE} ${tip ? 'inline-flex items-center gap-1 cursor-help border-b border-dotted border-amber-500/30' : ''}`}>
+      {title}
+      {tip && <span className="text-[9px] text-amber-500/70">?</span>}
+    </CardTitle>
+  )
   return (
     <Card className={`bg-card/40 border-border ${className}`} {...rest}>
       <CardHeader className="pb-2">
         <div className="flex items-center gap-2">
           <Icon className="w-4 h-4 text-cyan-400" />
-          <CardTitle className={CARD_TITLE}>{title}</CardTitle>
+          {tip ? <InfoTip tip={tip}>{titleEl}</InfoTip> : titleEl}
         </div>
         {sub && <div className="text-[9px] font-mono text-muted-foreground">{sub}</div>}
       </CardHeader>
@@ -52,11 +57,7 @@ export default function ReproductionView() {
   const { period, mode, realTerm } = useDashboard()
   const [accumulationRate, setAccumulationRate] = useState(0.5)
 
-  const { data, isPending, isError, error, refetch } = useQuery({
-    queryKey: ['python-c', period, mode, realTerm, accumulationRate],
-    queryFn: () => fetchPayload('c', period, mode, realTerm, accumulationRate),
-    staleTime: 0,
-  })
+  const { data, isPending, isError, error, refetch } = useEnginePayload('c', { period, mode, realTerm, accumulationRate })
 
   const payload = data?.payload
   const kpis = payload?.kpis || []
@@ -120,7 +121,7 @@ export default function ReproductionView() {
           {/* KPI grid */}
           {kpis.length > 0 && (
             <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3 mb-5" data-testid={REPRODUCTION.kpiGrid}>
-              {kpis.map((k) => <KpiCard key={k.key} k={k} />)}
+              {kpis.map((k) => <KpiCard key={k.key} k={k} tip={REPRODUCTION_KPI_TIPS[k.key]} />)}
             </div>
           )}
 
@@ -128,6 +129,7 @@ export default function ReproductionView() {
           <Panel
             icon={GitBranch}
             title="Super-Sankey · Inter-Department Flows"
+            tip={REPRODUCTION_PANEL_TIPS.sankey}
             sub={`Dept i → Dept j flow matrix · unit ${unit}`}
             className="mb-5"
           >
@@ -147,6 +149,7 @@ export default function ReproductionView() {
             <Panel
               icon={Grid3X3}
               title="Departmental Flow Matrix"
+              tip={REPRODUCTION_PANEL_TIPS.flow_matrix}
               sub={`Fiscal flows re-attributed to dept I/II/III · ${unit}`}
               data-testid={REPRODUCTION.flowMatrix}
             >
@@ -208,6 +211,7 @@ export default function ReproductionView() {
             <Panel
               icon={Layers}
               title="Value Category Matrix · c / v / s"
+              tip={REPRODUCTION_PANEL_TIPS.value_category}
               sub={`Destination-side decomposition per department · ${unit}`}
               data-testid={REPRODUCTION.valueCategory}
             >
@@ -248,6 +252,7 @@ export default function ReproductionView() {
             <Panel
               icon={Scale}
               title="Simple Reproduction · Equilibrium"
+              tip={REPRODUCTION_PANEL_TIPS.simple_balance}
               sub="X₁ − c · X₂ − v − s · residual ≈ 0 = schema balance"
               data-testid={REPRODUCTION.simpleBalance}
             >
@@ -299,6 +304,7 @@ export default function ReproductionView() {
             <Panel
               icon={ArrowLeftRight}
               title="Expanded Reproduction · Accumulation"
+              tip={REPRODUCTION_PANEL_TIPS.expanded}
               sub={`Surplus reinvestment share → Δc / Δv per department`}
               data-testid={REPRODUCTION.expandedAccumulation}
             >
@@ -371,6 +377,7 @@ export default function ReproductionView() {
           <Panel
             icon={Repeat}
             title="Detailed Pipeline · Source → Destination Edges"
+            tip={REPRODUCTION_PANEL_TIPS.pipeline}
             sub={`${pipeline?.nodes?.length || 0} nodes // ${edges.length} edges // unit ${pipeline?.unit || unit}`}
             data-testid={REPRODUCTION.pipelineEdges}
           >
