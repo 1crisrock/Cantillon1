@@ -35,6 +35,7 @@ export default function MarxianView() {
   const matrix = payload?.matrix
   const rows = matrix?.rows || []
   const reserveArmy = payload?.reserveArmy || []
+  const sourceMode = payload?.raw?.source_mode || 'fiscal'
 
   return (
     <div className="container mx-auto px-4 py-6">
@@ -46,9 +47,18 @@ export default function MarxianView() {
         <h1 className="text-xl font-mono font-bold tracking-widest text-amber-300 uppercase text-glow">
           Marxian Value Accounts
         </h1>
-        <div className="flex items-center gap-1.5 text-[9px] font-mono text-slate-500">
-          <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 blink" />
-          {isPending ? 'ENGINE RUNNING' : 'ENGINE LIVE'}
+        <div className="flex items-center gap-2">
+          <span className={`text-[9px] font-mono uppercase tracking-wider px-2 py-0.5 rounded-sm border ${
+            sourceMode === 'cgi_imo'
+              ? 'border-emerald-500/40 text-emerald-400 bg-emerald-500/10'
+              : 'border-slate-500/40 text-slate-400 bg-slate-500/5'
+          }`}>
+            DATA: {sourceMode === 'cgi_imo' ? 'CGI-IMO (INDEC)' : 'FISCAL'}
+          </span>
+          <div className="flex items-center gap-1.5 text-[9px] font-mono text-slate-500">
+            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 blink" />
+            {isPending ? 'ENGINE RUNNING' : 'ENGINE LIVE'}
+          </div>
         </div>
       </div>
       <p className="mb-6 text-[11px] font-mono text-muted-foreground max-w-3xl">
@@ -139,6 +149,50 @@ export default function MarxianView() {
               <ReserveArmyChart data={reserveArmy} />
             </CardContent>
           </Card>
+
+          {/* 4. CGI-IMO Panel — INDEC National Accounts */}
+          {payload?.raw?.cgi_imo && (
+            <Card className="bg-card/40 border-border mb-5">
+              <CardHeader className="pb-2">
+                <div className="flex items-center gap-2">
+                  <Factory className="w-4 h-4 text-emerald-400" />
+                  <CardTitle className={CARD_TITLE}>CGI-IMO · INDEC National Accounts</CardTitle>
+                </div>
+                <div className="text-[9px] font-mono text-muted-foreground">
+                  Real INDEC data: value added, labor income, mixed income, EBE, tax revenue, employment
+                </div>
+              </CardHeader>
+              <CardContent className="pt-0">
+                <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                  {payload.raw.cgi_imo.series?.map((s) => {
+                    const varName = s._id?.variable
+                    const label = {
+                      RTA_PCT: 'RTA % GDP',
+                      EBE_PCT: 'EBE % GDP',
+                      OTROS_IMP_PCT: 'Net Taxes % GDP',
+                      IMO_JOBS: 'IMO Jobs (thousand)',
+                    }[varName] || varName
+                    return (
+                      <div key={varName} className="rounded-sm border border-border/60 bg-black/20 px-3 py-2">
+                        <div className="text-[9px] font-mono uppercase tracking-wider text-muted-foreground mb-1">
+                          {label}
+                        </div>
+                        <div className="text-lg font-mono font-bold text-emerald-300">
+                          {s.latest_value != null ? Number(s.latest_value).toFixed(1) : '—'}
+                          <span className="text-[9px] text-muted-foreground ml-1">
+                            {varName.includes('PCT') ? '%' : 'k'}
+                          </span>
+                        </div>
+                        <div className="text-[8px] font-mono text-slate-500 mt-0.5">
+                          {s.count} obs · {s.min_period} → {s.max_period}
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              </CardContent>
+            </Card>
+          )}
 
           {/* Methodology note */}
           <div className="rounded-sm border border-border/60 bg-black/20 px-3 py-2 text-[9px] font-mono text-slate-500 leading-relaxed">

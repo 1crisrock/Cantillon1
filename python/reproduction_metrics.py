@@ -239,15 +239,141 @@ def build_pipeline(flows: dict) -> dict:
             "department_names": DEPT_NAMES}
 
 
+# --------------------------------------------------------------------------- #
+# COU-enhanced reproduction metrics
+# --------------------------------------------------------------------------- #
+def _augment_flows_with_cou(flows: dict, cou: dict) -> dict:
+    """Augment fiscal flows with COU inter-departmental data.
+
+    Adds COU-derived edges to the Sankey pipeline while preserving
+    existing fiscal flow structure. The COU data provides actual
+    economic inter-department flows from Argentina's Supply and Use Tables.
+    """
+    dept_flow = cou.get("dept_flow_matrix", {})
+    dept_va = cou.get("dept_value_added", {})
+    matrix = dept_flow.get("matrix", {})
+
+    # Build COU-derived links for the Sankey
+    cou_links = []
+    dept_labels = {
+        1: "Dept I (Production)",
+        2: "Dept II (Consumption)",
+        3: "Dept III (Finance/State)",
+    }
+
+    for src_dept in range(1, 4):
+        for tgt_dept in range(1, 4):
+            val = matrix.get(src_dept, {}).get(tgt_dept, 0.0)
+            if val > 0:
+                cou_links.append({
+                    "source": f"COU {dept_labels[src_dept]}",
+                    "target": f"COU {dept_labels[tgt_dept]}",
+                    "value": round(val, 2),
+                    "source_department": src_dept,
+                    "target_department": tgt_dept,
+                    "source_kind": "c",
+                    "target_kind": "c",
+                    "intra_department": src_dept == tgt_dept,
+                    "cou_derived": True,
+                })
+
+    # Augment the flows dict with COU data
+    augmented = dict(flows)
+
+    # Add COU sources and destinations for the Sankey nodes
+    cou_sources = []
+    cou_destinations = []
+    for dept in range(1, 4):
+        vab = dept_va.get("dept_vab", {}).get(dept, 0.0)
+        vbp = dept_va.get("dept_vbp", {}).get(dept, 0.0)
+        ui = dept_va.get("dept_intermediate", {}).get(dept, 0.0)
+
+        cou_sources.append({
+            "name": f"COU {dept_labels[dept]}",
+            "value": round(vbp, 2),
+            "department": dept,
+            "cou_derived": True,
+        })
+        cou_destinations.append({
+            "name": f"COU {dept_labels[dept]}",
+            "value": round(ui + vab, 2),
+            "department": dept,
+            "cou_derived": True,
+        })
+
+    # Merge: keep existing edges, add COU edges
+    existing_links = augmented.get("links", [])
+    augmented["links"] = existing_links + cou_links
+    augmented["cou_available"] = True
+    augmented["cou_data"] = cou
+
+    return augmented
+
+
+def cou_enhanced_value_category(flows: dict, cou: dict) -> dict:
+    """Enhanced c/v/s decomposition using COU data.
+
+    Uses COU value-added breakdown instead of fiscal flow classification:
+    - c = intermediate consumption (from COU utilization matrix)
+    - v = compensation of employees (approximated from VAB)
+    - s = gross operating surplus + taxes (approximated from VAB)
+    """
+    dept_va = cou.get("dept_value_added", {})
+    dept_flow = cou.get("dept_flow_matrix", {})
+    # JSON serializes int keys as strings; normalize to int lookups
+    dept_intermediate_raw = dept_va.get("dept_intermediate", {})
+    dept_vab_raw = dept_va.get("dept_vab", {})
+    dept_intermediate = {int(k): v for k, v in dept_intermediate_raw.items()}
+    dept_vab = {int(k): v for k, v in dept_vab_raw.items()}
+
+    by_dept = {}
+    for dept in DEPT_NAMES:
+        c = dept_intermediate.get(dept, 0.0)
+        vab = dept_vab.get(dept, 0.0)
+
+        # Approximate v/s split from VAB (standard 60/40 split for Argentina)
+        # NOTE: The COU Excel does not decompose VAB into remuneraciones (v) and
+        # excedente operativo (s). This 60/40 ratio is a provisional approximation
+        # based on Argentina's structural ratios from EPF/RNT surveys.
+        # TODO: Replace with actual data from INDEC RNT or EPF when available.
+        v = vab * 0.6  # compensation of employees ~60% of VAB
+        s = vab * 0.4  # gross operating surplus ~40% of VAB
+
+        by_dept[dept] = {
+            "name": DEPT_NAMES[dept],
+            "c": round(c, 2),
+            "v": round(v, 2),
+            "s": round(s, 2),
+            "vab": round(vab, 2),
+            "source": "COU 2018",
+        }
+
+    return by_dept
+
+
 def compute_all(period: str = "milei", mode: str = "nominal",
                 accumulation_rate: float = 0.5,
                 ds: data_loader.DataSource | None = None) -> dict:
     ds = ds or data_loader.DataSource()
     flows = ds.fiscal_flows(period, mode)
-    return {
+
+    # Try to load COU data for enhanced analysis
+    cou = None
+    try:
+        cou = ds.cou_matrix(2018)
+    except Exception:
+        pass  # Fall back to hardcoded assignments
+
+    # Build enhanced flows if COU available
+    if cou:
+        flows = _augment_flows_with_cou(flows, cou)
+
+    # Compute base metrics
+    result = {
         "period": period,
         "mode": mode,
         "flows_unit": flows.get("unit", "T ARS"),
+        "cou_available": cou is not None,
         "department_totals": department_totals(flows),
         "departmental_flow_matrix": departmental_flow_matrix(flows),
         "value_category_matrix": value_category_matrix(flows),
@@ -255,6 +381,16 @@ def compute_all(period: str = "milei", mode: str = "nominal",
         "expanded_reproduction": expanded_reproduction(flows, accumulation_rate),
         "pipeline": build_pipeline(flows),
     }
+
+    # Add COU-enhanced metrics if available
+    if cou:
+        result["cou_enhanced_value_category"] = cou_enhanced_value_category(flows, cou)
+        result["cou_dept_flow_matrix"] = cou.get("dept_flow_matrix", {})
+        result["cou_dept_value_added"] = cou.get("dept_value_added", {})
+        result["cou_final_demand"] = cou.get("final_demand_totals", {})
+        result["cou_sector_aggregation"] = cou.get("sector_aggregation", {})
+
+    return result
 
 
 if __name__ == "__main__":
