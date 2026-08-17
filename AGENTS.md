@@ -30,8 +30,10 @@
 
 ## Python metric engines (`python/`)
 
-- **Stdlib-only** Python package (no pip deps). `data_loader.py` mirrors `route.js` normalization: API-first (`CANTILLON_API_URL`, default `localhost:3000/api`), falls back to parsing `lib/seedData.js`.
+- **Python package with one external dependency**: `xlrd>=2.0.1` (for Excel parsing). Install: `pip install -r requirements.txt`.
+- `data_loader.py` mirrors `route.js` normalization: API-first (`CANTILLON_API_URL`, default `localhost:3000/api`), falls back to parsing `lib/seedData.js`.
 - Engines: `cantillon_metrics.py` (App A: CMPI, FPI), `marxian_metrics.py` (App B: s/v, c/v, p'), `reproduction_metrics.py` (App C: dept I/II/III matrices, simple + expanded reproduction, Super-Sankey pipeline).
+- `cou_ingester.py` downloads and parses INDEC COU (Cuadros de Oferta y Utilización) Excel files from INDEC FTP. Provides actual economic flow data from Argentina's Supply and Use Tables for enhanced reproduction metrics.
 - `serve.py` is the CLI bridge: `python3 -m python.serve --app a|b|c|all --period <id> --mode nominal|usd [--accumulation-rate 0..1]` → single JSON doc on stdout.
 - `payloads.py` shapes engine output into `{charts, kpis, sankey, raw}` (Plotly arrays, Bloomberg-style KPI grid, Sankey matrices).
 - **API exposure**: `GET /api/python?app=a|b|c|all&period=milei&mode=nominal&accumulation_rate=0.5` (route in `app/api/python/[[...path]]/route.js`) spawns the bridge. `GET /api/python` (no selector) and `GET /api/python/health` return the info/health doc; path-style `/api/python/<id>` also works. Requires `python3` on PATH.
@@ -41,6 +43,27 @@
 - `next.config.js`: `output: 'standalone'`, images unoptimized, `serverExternalPackages: ['mongodb']`, permissive CORS/CSP headers.
 - Mongo: `MONGO_URL` env, DB `cantillon`, collections `autosync_cache`, `bcra_cache`, `snapshots`.
 - `.emergent/emergent.yml` pins the Emergent harness Docker image (`nextjs_mongo_shadcn_base_image_cloud_arm`).
+- Python dependencies: `requirements.txt` contains `xlrd>=2.0.1` for COU Excel parsing.
+
+## COU Data Integration
+
+- **Source**: INDEC COU 2018 (Cuadros de Oferta y Utilización) - Argentina's Supply and Use Tables
+- **File**: `python/cou_ingester.py` downloads Excel from `https://www.indec.gob.ar/ftp/cuadros/economia/sh_cou_08_21.xls`
+- **Cache**: Parsed data cached to `/tmp/cantillon_cou/cou_2018.json`
+- **Usage**: `reproduction_metrics.py` loads COU data to enhance department flow analysis with actual economic inter-sector flows
+- **Fallback**: If COU unavailable, falls back to hardcoded fiscal flow assignments
+
+## EPH Data Integration (Encuesta Permanente de Hogares)
+
+- **Source**: INDEC EPH household survey microdata (Personas + Hogares TXT files)
+- **File**: `python/eph_processor.py` processes raw EPH microdata into labor market indicators
+- **Cache**: Aggregated results cached to `/tmp/cantillon_eph/eph_aggregated.json`
+- **Usage**: `marxian_metrics.py` uses real EPH data for the Reserve Army (EIR) index when available, replacing the proxy wage/GDP/CPI index
+- **CLI**: `python3 -m python.serve --app b --eph-dir /path/to/eph/files` to load raw EPH data
+- **Env**: `EPH_DATA_DIR` environment variable can also specify the EPH data directory
+- **Fallback**: If EPH unavailable, falls back to the proxy Reserve Army index (wage/GDP/CPI)
+- **KPIs**: 8 EPH-specific KPIs appear in App B when data is available (unemployment, informal, precarization, EIR breakdown)
+- **EIR Theory**: Marx's relative surplus population — Flotante (subocupados + informal), Latente (discouraged + unpaid family), Estancado (long-term unemployed)
 
 ## Testing
 

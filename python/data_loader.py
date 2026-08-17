@@ -268,6 +268,15 @@ class CantillonClient:
     def bcra_live(self):
         return self._get("bcra/live")
 
+    def cgi_imo(self, variable: str | None = None, sector: str = "TOTAL"):
+        params = {"sector": sector}
+        if variable:
+            params["variable"] = variable
+        return self._get("cgi-imo", **params)
+
+    def cgi_imo_totals(self, sector: str = "TOTAL"):
+        return self._get("cgi-imo/summary", sector=sector)
+
 
 class DataSource:
     """Facade the metric engines depend on. API-first with seed fallback.
@@ -379,3 +388,193 @@ class DataSource:
             return data.get(period) or data["milei"]
 
         return self._resolve(api, seed)
+
+    def cgi_imo(self, variable: str | None = None, sector: str = "TOTAL"):
+        def api():
+            return self.client.cgi_imo(variable=variable, sector=sector)
+
+        def seed():
+            # Direct INDEC fetch when Next.js API is unavailable (e.g. bridge mode)
+            from .indec_ingester import fetch_all_series, normalize_observations
+            raw = fetch_all_series()
+            docs = normalize_observations(raw)
+            # Filter to requested variable/sector
+            filtered = docs
+            if variable:
+                filtered = [d for d in filtered if d["variable"] == variable]
+            if sector:
+                filtered = [d for d in filtered if d["sector"] == sector]
+            return {"source": "INDEC", "dataset": "CGI-IMO", "count": len(filtered), "data": filtered}
+
+        return self._resolve(api, seed)
+
+    def cgi_imo_totals(self, sector: str = "TOTAL"):
+        """Return the totals panel for CGI-IMO: VAB, RTA, IMB, EBE, tax, IMO jobs."""
+        def api():
+            return self.client.cgi_imo_totals(sector=sector)
+
+        def seed():
+            # Direct INDEC fetch when Next.js API is unavailable (e.g. bridge mode)
+            from .indec_ingester import fetch_all_series, normalize_observations
+            raw = fetch_all_series()
+            docs = normalize_observations(raw)
+            if sector:
+                docs = [d for d in docs if d["sector"] == sector]
+            # Aggregate by variable
+            agg: dict[str, list] = {}
+            for d in docs:
+                var = d["variable"]
+                if var not in agg:
+                    agg[var] = []
+                agg[var].append(d)
+            series = []
+            for var, items in sorted(agg.items()):
+                items.sort(key=lambda x: x["reference_period"])
+                vals = [i["value"] for i in items if i.get("value") is not None]
+                series.append({
+                    "_id": {"variable": var, "sector": sector},
+                    "count": len(items),
+                    "min_period": items[0]["reference_period"],
+                    "max_period": items[-1]["reference_period"],
+                    "latest_value": vals[-1] if vals else None,
+                })
+            return {"source": "INDEC", "dataset": "CGI-IMO", "series": series}
+
+        return self._resolve(api, seed)
+
+    def cgi_imo_ts(self, period: str) -> dict[str, dict[str, float]]:
+        """Return {quarter: {RTA, EBE, IMB, VAB, OTROS_IMP}} aligned to a period's quarters.
+
+        Used by the Marxian engine when source="cgi_imo" to derive v and s
+        directly from INDEC national accounts instead of fiscal line items.
+        """
+        def _build(raw_docs: list[dict]) -> dict[str, dict[str, float]]:
+            by_q: dict[str, dict[str, float]] = {}
+            for d in raw_docs:
+                q = d["reference_period"]
+                var = d["variable"]
+                if var in ("RTA", "EBE", "IMB", "VAB_pb", "OTROS_IMP"):
+                    by_q.setdefault(q, {})[var] = d["value"]
+            return by_q
+
+        def api():
+            result = self.client.cgi_imo()
+            docs = result.get("data", [])
+            return _build(docs)
+
+        def seed():
+            from .indec_ingester import fetch_all_series, normalize_observations
+            raw = fetch_all_series()
+            docs = normalize_observations(raw)
+            return _build(docs)
+
+        all_ts = self._resolve(api, seed)
+
+        # Filter to quarters belonging to the requested period
+        period_quarters = _period_quarters(period)
+        return {q: all_ts[q] for q in period_quarters if q in all_ts}
+
+    def has_cgi_imo(self, period: str) -> bool:
+        """Check if CGI-IMO data is available for the majority of a period's quarters."""
+        try:
+            ts = self.cgi_imo_ts(period)
+            actual_qs = self.timeseries(period, "nominal")
+            n_actual = len(actual_qs)
+            if n_actual == 0:
+                return False
+            return len(ts) >= n_actual * 0.7  # tolerate up to 30% missing quarters
+        except Exception:
+            return False
+
+    def cou_matrix(self, year: int = 2018) -> dict:
+        """Return COU matrix data for reproduction metrics.
+
+        Returns dict with:
+        - dept_flow_matrix: {matrix, row_totals, col_totals}
+        - dept_value_added: {dept_vab, dept_vbp, dept_intermediate}
+        - sector_aggregation: {sector_intermediate, sector_dept, ...}
+        - final_demand_totals: {household, government, exports, investment}
+        """
+        def api():
+            try:
+                return self.client._get("cou", year=year)
+            except DataSourceError:
+                raise
+
+        def seed():
+            from .cou_ingester import download_and_parse_cou
+            return download_and_parse_cou(year)
+
+        return self._resolve(api, seed)
+
+    def has_cou(self) -> bool:
+        """Check if COU data is available."""
+        try:
+            self.cou_matrix(2018)
+            return True
+        except Exception:
+            return False
+
+    def eph_metrics(self, period: str) -> dict | None:
+        """Return EPH (Encuesta Permanente de Hogares) metrics for a policy period.
+
+        Returns dict with unemployment, informal precarization, and EIR
+        (reserve army) indicators, or None if EPH data is unavailable.
+        """
+        def api():
+            return self.client._get("eph", period=period)
+
+        def seed():
+            from .eph_processor import get_eph_for_period
+            eph_dir = os.environ.get("EPH_DATA_DIR")
+            return get_eph_for_period(period, eph_dir)
+
+        return self._resolve(api, seed)
+
+    def eph_quarterly(self, period: str) -> list[dict]:
+        """Return quarterly EPH time series for a period.
+
+        Each row has: q, tasa_desempleo, tasa_informalidad, eir_sobre_pea,
+        eir_total, eir_flotante, eir_latente, eir_estancado.
+        Used by marxian_metrics to replace the proxy reserve army index.
+        """
+        def api():
+            result = self.client._get("eph/quarterly", period=period)
+            return result.get("data", [])
+
+        def seed():
+            from .eph_processor import get_eph_quarterly
+            eph_dir = os.environ.get("EPH_DATA_DIR")
+            return get_eph_quarterly(period, eph_dir)
+
+        return self._resolve(api, seed)
+
+    def has_eph(self) -> bool:
+        """Check if EPH data is available for any period."""
+        try:
+            result = self.eph_metrics("milei")
+            return result is not None and result.get("quarter_count", 0) > 0
+        except Exception:
+            return False
+
+
+def _period_quarters(period: str) -> list[str]:
+    """Return ordered list of quarter strings for a policy period."""
+    RANGES = {
+        "kirchner": ("2003-Q1", "2015-Q4"),
+        "macri": ("2016-Q1", "2019-Q4"),
+        "fernandez": ("2020-Q1", "2023-Q4"),
+        "milei": ("2024-Q1", "2026-Q4"),
+    }
+    start, end = RANGES.get(period, ("2003-Q1", "2026-Q4"))
+    sy, sq = int(start.split("-Q")[0]), int(start.split("-Q")[1])
+    ey, eq = int(end.split("-Q")[0]), int(end.split("-Q")[1])
+    quarters = []
+    y, q = sy, sq
+    while (y, q) <= (ey, eq):
+        quarters.append(f"{y}-Q{q}")
+        q += 1
+        if q > 4:
+            q = 1
+            y += 1
+    return quarters

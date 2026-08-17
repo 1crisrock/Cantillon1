@@ -34,6 +34,56 @@ function seriesForPeriod(periodId) {
   return QUARTERLY_SERIES.filter((r) => r.period === periodId)
 }
 
+// ---------- CGI-IMO ingestion helper ----------
+const CGI_IMO_STALE_TTL_MS = 7 * 24 * 60 * 60 * 1000 // 7 days (INDEC updates quarterly)
+let _cgiImoIngesting = null // dedup concurrent ingestions
+
+async function runCgiImoIngestion(db) {
+  if (_cgiImoIngesting) return _cgiImoIngesting
+  _cgiImoIngesting = (async () => {
+    const { execFile } = await import('node:child_process')
+    const { promisify } = await import('node:util')
+    const execFileAsync = promisify(execFile)
+
+    const cwd = process.cwd()
+    const { stdout } = await execFileAsync('python3', ['-m', 'python.indec_ingester'], {
+      cwd, encoding: 'utf-8', timeout: 120000, maxBuffer: 16 * 1024 * 1024,
+    })
+    const docs = JSON.parse(stdout)
+    if (!Array.isArray(docs) || docs.length === 0) return { inserted: 0, modified: 0, total: 0 }
+
+    const col = db.collection('cgi_imo')
+    await col.createIndex({ series_id: 1, reference_period: 1 }, { unique: true })
+    await col.createIndex({ variable: 1, reference_period: 1 })
+    await col.createIndex({ sector: 1 })
+    await col.createIndex({ ingested_at: 1 })
+
+    const ops = docs.map((doc) => ({
+      updateOne: {
+        filter: { series_id: doc.series_id, reference_period: doc.reference_period },
+        update: { $set: { ...doc, ingested_at: new Date().toISOString() } },
+        upsert: true,
+      },
+    }))
+    const result = await col.bulkWrite(ops, { ordered: false })
+    return { inserted: result.upsertedCount, modified: result.modifiedCount, total: docs.length }
+  })()
+  try {
+    return await _cgiImoIngesting
+  } finally {
+    _cgiImoIngesting = null
+  }
+}
+
+async function cgiImoNeedsRefresh(db) {
+  const col = db.collection('cgi_imo')
+  const count = await col.countDocuments()
+  if (count === 0) return true
+  const latest = await col.find().sort({ ingested_at: -1 }).limit(1).toArray()
+  if (!latest.length || !latest[0].ingested_at) return true
+  return (Date.now() - new Date(latest[0].ingested_at).getTime()) > CGI_IMO_STALE_TTL_MS
+}
+
 // ---------- Live BCRA auto-sync helpers ----------
 const BCRA_LIVE_URL = 'https://api.bcra.gob.ar/estadisticas/v4.0/Monetarias?limit=1000'
 const AUTOSYNC_CACHE_TTL_MS = 5 * 60 * 1000
@@ -462,6 +512,52 @@ export async function GET(request, { params }) {
       return json({ redirect: '/api/bcra/live' })
     }
 
+    // CGI-IMO: INDEC Cuenta de Generación del Ingreso data
+    // Auto-bootstrap on first load; refresh if older than 7 days.
+    if (path === 'cgi-imo') {
+      const db = await getDb()
+      let ingested = false
+      if (await cgiImoNeedsRefresh(db)) {
+        try {
+          await runCgiImoIngestion(db)
+          ingested = true
+        } catch (e) {
+          console.error('CGI-IMO auto-ingestion failed', e)
+        }
+      }
+      const col = db.collection('cgi_imo')
+      const variable = search.get('variable')
+      const sector = search.get('sector') || 'TOTAL'
+      const from = search.get('from')
+      const to = search.get('to')
+      const query = { sector }
+      if (variable) query.variable = variable
+      if (from || to) {
+        query.reference_period = {}
+        if (from) query.reference_period.$gte = from
+        if (to) query.reference_period.$lte = to
+      }
+      const docs = await col.find(query).sort({ reference_period: 1 }).toArray()
+      return json({ source: 'INDEC', dataset: 'CGI-IMO', count: docs.length, ingested, data: docs })
+    }
+
+    if (path === 'cgi-imo/summary') {
+      const db = await getDb()
+      const col = db.collection('cgi_imo')
+      const pipeline = [
+        { $group: {
+            _id: { variable: '$variable', sector: '$sector' },
+            count: { $sum: 1 },
+            min_period: { $min: '$reference_period' },
+            max_period: { $max: '$reference_period' },
+            latest_value: { $last: '$value' },
+        }},
+        { $sort: { '_id.variable': 1 } },
+      ]
+      const results = await col.aggregate(pipeline).toArray()
+      return json({ source: 'INDEC', dataset: 'CGI-IMO', series: results })
+    }
+
     return json({ error: 'Not found', path }, 404)
   } catch (e) {
     console.error('API error', e)
@@ -487,6 +583,18 @@ export async function POST(request, { params }) {
       }
       await db.collection('snapshots').insertOne(doc)
       return json({ ok: true, snapshot: doc })
+    }
+
+    // CGI-IMO ingestion: spawn Python ingester and upsert into MongoDB
+    if (path === 'cgi-imo/ingest') {
+      const db = await getDb()
+      try {
+        const result = await runCgiImoIngestion(db)
+        return json({ ok: true, ...result })
+      } catch (e) {
+        console.error('CGI-IMO ingestion error', e)
+        return json({ ok: false, error: String(e?.message || e) }, 500)
+      }
     }
 
     return json({ error: 'Not found', path }, 404)

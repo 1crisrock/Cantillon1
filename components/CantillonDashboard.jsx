@@ -471,13 +471,13 @@ function TreemapContent({ root, depth, x, y, width, height, index, name, value, 
 }
 
 const BCRA_VARIABLES = [
-  { id: 1,   label: 'Reservas',        unit: 'M USD',    accent: 'emerald', tipKey: 'reservas', format: (v) => `${(v / 1000).toFixed(2)} B$` },
-  { id: 5,   label: 'USD/ARS Mayor.',  unit: 'ARS',      accent: 'amber',   tipKey: 'usd_ars',  format: (v) => v.toFixed(2) },
-  { id: 15,  label: 'Base Monetaria',  unit: 'M ARS',    accent: 'cyan',    tipKey: 'base_mon', format: (v) => `${(v / 1e6).toFixed(2)} T$` },
-  { id: 109, label: 'M2',              unit: 'M ARS',    accent: 'cyan',    tipKey: 'm2',       format: (v) => `${(v / 1e6).toFixed(1)} T$` },
-  { id: 28,  label: 'IPC YoY',         unit: '%',        accent: 'red',     tipKey: 'ipc_yoy',  format: (v) => `${v.toFixed(1)}%` },
-  { id: 27,  label: 'IPC Mensual',     unit: '%',        accent: 'red',     tipKey: 'ipc_mom',  format: (v) => `${v.toFixed(2)}%` },
-  { id: 7,   label: 'BADLAR',          unit: '%',        accent: 'purple',  tipKey: 'badlar',   format: (v) => `${v.toFixed(1)}%` },
+  { id: 1,   label: 'Reservas',        unit: 'M USD',    accent: 'emerald', tipKey: 'reservas', ars: false, format: (v) => `${(v / 1000).toFixed(2)} B$` },
+  { id: 5,   label: 'USD/ARS Mayor.',  unit: 'ARS',      accent: 'amber',   tipKey: 'usd_ars',  ars: false, format: (v) => v.toFixed(2) },
+  { id: 15,  label: 'Base Monetaria',  unit: 'M ARS',    accent: 'cyan',    tipKey: 'base_mon', ars: true,  format: (v) => `${(v / 1e6).toFixed(2)} T$` },
+  { id: 109, label: 'M2',              unit: 'M ARS',    accent: 'cyan',    tipKey: 'm2',       ars: true,  format: (v) => `${(v / 1e6).toFixed(1)} T$` },
+  { id: 28,  label: 'IPC YoY',         unit: '%',        accent: 'red',     tipKey: 'ipc_yoy',  ars: false, format: (v) => `${v.toFixed(1)}%` },
+  { id: 27,  label: 'IPC Mensual',     unit: '%',        accent: 'red',     tipKey: 'ipc_mom',  ars: false, format: (v) => `${v.toFixed(2)}%` },
+  { id: 7,   label: 'BADLAR',          unit: '%',        accent: 'purple',  tipKey: 'badlar',   ars: false, format: (v) => `${v.toFixed(1)}%` },
 ]
 
 const accentClass = {
@@ -488,10 +488,11 @@ const accentClass = {
   purple:  'text-purple-400 border-purple-500/30',
 }
 
-function LiveBcraTicker({ data, loading, onRefresh }) {
+function LiveBcraTicker({ data, loading, onRefresh, mode }) {
   const variables = data?.variables || {}
   const derived = data?.derived || {}
   const isLive = data?.source === 'BCRA_LIVE' || data?.source === 'BCRA_LIVE_CACHED'
+  const usdRate = variables.usd_ars_mayorista?.value || 1200
   const varByKey = {
     1: variables.reservas_usd_m,
     5: variables.usd_ars_mayorista,
@@ -500,6 +501,14 @@ function LiveBcraTicker({ data, loading, onRefresh }) {
     28: variables.inflacion_interanual,
     27: variables.inflacion_mensual,
     7: variables.tasa_badlar,
+  }
+
+  const formatValue = (V, val) => {
+    if (mode === 'usd' && V.ars) {
+      const usdB = (val * 1e6) / usdRate / 1e9
+      return `${usdB.toFixed(2)} B$`
+    }
+    return V.format(val)
   }
 
   return (
@@ -527,7 +536,7 @@ function LiveBcraTicker({ data, loading, onRefresh }) {
                     <div className="flex flex-col leading-tight">
                       <span className="text-[9px] font-mono uppercase tracking-widest text-muted-foreground">{V.label}</span>
                       <span className={`text-sm font-mono font-bold tabular ${accentClass[V.accent].split(' ')[0]}`}>
-                        {v ? V.format(v.value) : ''}
+                        {v ? formatValue(V, v.value) : ''}
                       </span>
                       <span className="text-[8px] font-mono text-muted-foreground/70">{v?.date || ''}</span>
                     </div>
@@ -689,7 +698,7 @@ export default function CantillonDashboard() {
   return (
     <div>
       <TerminalHeader period={period} mode={mode} realTerm={realTerm} liveSync={liveSync} />
-      <LiveBcraTicker data={bcraLive} loading={bcraLoading} onRefresh={refreshBcra} />
+      <LiveBcraTicker data={bcraLive} loading={bcraLoading} onRefresh={refreshBcra} mode={mode} />
 
       {/* KPI Row */}
       <div className="container mx-auto px-4 py-4">
