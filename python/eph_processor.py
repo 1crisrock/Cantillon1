@@ -22,6 +22,8 @@ import os
 from pathlib import Path
 
 
+# Production-friendly: check embedded cache first, fall back to dynamic location
+EMBEDDED_CACHE = Path(__file__).resolve().parent / "data" / "eph_aggregated.json"
 CACHE_DIR = Path(os.environ.get(
     "EPH_CACHE_DIR",
     str(Path(__file__).resolve().parent.parent / "eph_data" / ".cache"),
@@ -338,13 +340,20 @@ def load_or_process(data_dir: str | None = None) -> dict:
     """Load cached EPH data or process from raw files.
 
     Priority:
-      1. Cache at /tmp/cantillon_eph/eph_aggregated.json
-      2. Process from data_dir if provided
-      3. Return empty (no EPH data available)
+      1. Embedded production cache (python/data/eph_aggregated.json) — committed to repo
+      2. Dynamic cache at CACHE_DIR (eph_data/.cache/eph_aggregated.json)
+      3. Process from data_dir if provided
+      4. Return empty (no EPH data available)
     """
-    cache_path = CACHE_DIR / "eph_aggregated.json"
+    # Try embedded cache first (production-friendly, always available)
+    if EMBEDDED_CACHE.exists():
+        try:
+            return json.loads(EMBEDDED_CACHE.read_text(encoding="utf-8"))
+        except Exception:
+            pass
 
-    # Try cache first
+    # Try dynamic cache (development environment)
+    cache_path = CACHE_DIR / "eph_aggregated.json"
     if cache_path.exists():
         try:
             return json.loads(cache_path.read_text(encoding="utf-8"))

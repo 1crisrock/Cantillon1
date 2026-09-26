@@ -1,0 +1,213 @@
+{
+  "quarters": {
+    "2024-Q1": {
+      "quarter": "2024-Q1",
+      "PEA_poblacion": 14202170.0,
+      "Desocupados_poblacion": 1088242.0,
+      "Ocupados_poblacion": 13113928.0,
+      "Tasa_Desempleo_pct": 7.66,
+      "Tasa_Informalidad_Asalariada_pct": 35.65,
+      "Tasa_Precarizacion_General_pct": 43.48,
+      "EIR_Total_poblacion": 9380622.0,
+      "EIR_sobre_PEA_pct": 66.05,
+      "EIR_sobre_PET_pct": 36.77,
+      "Desglose_EIR": {
+        "Flotante_poblacion": 9372221.0,
+        "Flotante_pct_del_EIR": 99.91,
+        "Latente_poblacion": 8401.0,
+        "Latente_pct_del_EIR": 0.09,
+        "Estancado_poblacion": 0.0,
+        "Estancado_pct_del_EIR": 0.0
+      }
+    },
+    "2024-Q2": {
+      "quarter": "2024-Q2",
+      "PEA_poblacion": 14386127.0,
+      "Desocupados_poblacion": 1088226.0,
+      "Ocupados_poblacion": 13297901.0,
+      "Tasa_Desempleo_pct": 7.56,
+      "Tasa_Informalidad_Asalariada_pct": 36.36,
+      "Tasa_Precarizacion_General_pct": 44.68,
+      "EIR_Total_poblacion": 10325462.0,
+      "EIR_sobre_PEA_pct": 71.77,
+      "EIR_sobre_PET_pct": 40.35,
+      "Desglose_EIR": {
+        "Flotante_poblacion": 10321224.0,
+        "Flotante_pct_del_EIR": 99.96,
+        "Latente_poblacion": 4238.0,
+        "Latente_pct_del_EIR": 0.04,
+        "Estancado_poblacion": 0.0,
+        "Estancado_pct_del_EIR": 0.0
+      }
+    },
+    "2024-Q3": {
+      "quarter": "2024-Q3",
+      "PEA_poblacion": 14362374.0,
+      "Desocupados_poblacion": 994334.0,
+      "Ocupados_poblacion": 13368040.0,
+      "Tasa_Desempleo_pct": 6.92,
+      "Tasa_Informalidad_Asalariada_pct": 36.69,
+      "Tasa_Precarizacion_General_pct": 45.35,
+      "EIR_Total_poblacion": 10229139.0,
+      "EIR_sobre_PEA_pct": 71.22,
+      "EIR_sobre_PET_pct": 39.85,
+      "Desglose_EIR": {
+        "Flotante_poblacion": 10223140.0,
+        "Flotante_pct_del_EIR": 99.94,
+        "Latente_poblacion": 5999.0,
+        "Latente_pct_del_EIR": 0.06,
+        "Estancado_poblacion": 0.0,
+        "Estancado_pct_del_EIR": 0.0
+      }
+    },
+    "2024-Q4": {
+      "quarter": "2024-Q4",
+      "PEA_poblacion": 14533231.0,
+      "Desocupados_poblacion": 936747.0,
+      "Ocupados_poblacion": 13596484.0,
+      "Tasa_Desempleo_pct": 6.45,
+      "Tasa_Informalidad_Asalariada_pct": 36.12,
+      "Tasa_Precarizacion_General_pct": 44.81,
+      "EIR_Total_poblacion": 10399730.0,
+      "EIR_sobre_PEA_pct": 71.56,
+      "EIR_sobre_PET_pct": 40.37,
+      "Desglose_EIR": {
+        "Flotante_poblacion": 10392249.0,
+        "Flotante_pct_del_EIR": 99.93,
+        "Latente_poblacion": 7481.0,
+        "Latente_pct_del_EIR": 0.07,
+        "Estancado_poblacion": 0.0,
+        "Estancado_pct_del_EIR": 0.0
+      }
+    },
+    "2025-Q1": {
+      "quarter": "2025-Q1",
+      "PEA_poblacion": 14394475.0,
+      "Desocupados_poblacion": 1135666.0,
+      "Ocupados_poblacion": 13258809.0,
+      "Tasa_Desempleo_pct": 7.89,
+      "Tasa_Informalidad_Asalariada_pct": 36.29,
+      "Tasa_Precarizacion_General_pct": 45.14,
+      "EIR_Total_poblacion": 9706750.0,
+      "EIR_sobre_PEA_pct": 67.43,
+      "EIR_sobre_PET_pct": 37.3,
+      "Desglose_EIR": {
+        "Flotante_poblacion": 9691845.0,
+        "Flotante_pct_del_EIR": 99.85,
+        "Latente_poblacion": 14905.0,
+        "Latente_pct_del_EIR": 0.15,
+        "Estancado_poblacion": 0.0,
+        "Estancado_pct_del_EIR": 0.0
+      }
+    },
+    "2025-Q2": {
+      "quarter": "2025-Q2",
+      "PEA_poblacion": 14394979.0,
+      "Desocupados_poblacion": 1090598.0,
+      "Ocupados_poblacion": 13304381.0,
+      "Tasa_Desempleo_pct": 7.58,
+      "Tasa_Informalidad_Asalariada_pct": 37.73,
+      "Tasa_Precarizacion_General_pct": 46.56,
+      "EIR_Total_poblacion": 10424235.0,
+      "EIR_sobre_PEA_pct": 72.42,
+      "EIR_sobre_PET_pct": 40.07,
+      "Desglose_EIR": {
+        "Flotante_poblacion": 10419198.0,
+        "Flotante_pct_del_EIR": 99.95,
+        "Latente_poblacion": 5037.0,
+        "Latente_pct_del_EIR": 0.05,
+        "Estancado_poblacion": 0.0,
+        "Estancado_pct_del_EIR": 0.0
+      }
+    },
+    "2025-Q3": {
+      "quarter": "2025-Q3",
+      "PEA_poblacion": 14564191.0,
+      "Desocupados_poblacion": 957918.0,
+      "Ocupados_poblacion": 13606273.0,
+      "Tasa_Desempleo_pct": 6.58,
+      "Tasa_Informalidad_Asalariada_pct": 36.65,
+      "Tasa_Precarizacion_General_pct": 46.26,
+      "EIR_Total_poblacion": 10448736.0,
+      "EIR_sobre_PEA_pct": 71.74,
+      "EIR_sobre_PET_pct": 40.08,
+      "Desglose_EIR": {
+        "Flotante_poblacion": 10443843.0,
+        "Flotante_pct_del_EIR": 99.95,
+        "Latente_poblacion": 4893.0,
+        "Latente_pct_del_EIR": 0.05,
+        "Estancado_poblacion": 0.0,
+        "Estancado_pct_del_EIR": 0.0
+      }
+    },
+    "2025-Q4": {
+      "quarter": "2025-Q4",
+      "PEA_poblacion": 14596362.0,
+      "Desocupados_poblacion": 1092979.0,
+      "Ocupados_poblacion": 13503383.0,
+      "Tasa_Desempleo_pct": 7.49,
+      "Tasa_Informalidad_Asalariada_pct": 36.32,
+      "Tasa_Precarizacion_General_pct": 45.84,
+      "EIR_Total_poblacion": 10275323.0,
+      "EIR_sobre_PEA_pct": 70.4,
+      "EIR_sobre_PET_pct": 39.19,
+      "Desglose_EIR": {
+        "Flotante_poblacion": 10264774.0,
+        "Flotante_pct_del_EIR": 99.9,
+        "Latente_poblacion": 10549.0,
+        "Latente_pct_del_EIR": 0.1,
+        "Estancado_poblacion": 0.0,
+        "Estancado_pct_del_EIR": 0.0
+      }
+    },
+    "2026-Q1": {
+      "quarter": "2026-Q1",
+      "PEA_poblacion": 14616218.0,
+      "Desocupados_poblacion": 1144582.0,
+      "Ocupados_poblacion": 13471636.0,
+      "Tasa_Desempleo_pct": 7.83,
+      "Tasa_Informalidad_Asalariada_pct": 37.9,
+      "Tasa_Precarizacion_General_pct": 46.77,
+      "EIR_Total_poblacion": 9944123.0,
+      "EIR_sobre_PEA_pct": 68.03,
+      "EIR_sobre_PET_pct": 37.98,
+      "Desglose_EIR": {
+        "Flotante_poblacion": 9937538.0,
+        "Flotante_pct_del_EIR": 99.93,
+        "Latente_poblacion": 6585.0,
+        "Latente_pct_del_EIR": 0.07,
+        "Estancado_poblacion": 0.0,
+        "Estancado_pct_del_EIR": 0.0
+      }
+    }
+  },
+  "periods": {
+    "milei": {
+      "quarter_count": 9,
+      "Tasa_Desempleo_pct": 7.33,
+      "Tasa_Informalidad_Asalariada_pct": 36.63,
+      "Tasa_Precarizacion_General_pct": 45.43,
+      "EIR_sobre_PEA_pct": 70.07,
+      "EIR_sobre_PET_pct": 39.11,
+      "PEA_poblacion": 14616218.0,
+      "Desocupados_poblacion": 1144582.0,
+      "Ocupados_poblacion": 13471636.0,
+      "EIR_Total_poblacion": 9944123.0,
+      "Desglose_EIR": {
+        "Flotante_poblacion": 9937538.0,
+        "Flotante_pct_del_EIR": 99.93,
+        "Latente_poblacion": 6585.0,
+        "Latente_pct_del_EIR": 0.07,
+        "Estancado_poblacion": 0.0,
+        "Estancado_pct_del_EIR": 0.0
+      }
+    }
+  },
+  "metadata": {
+    "source": "INDEC EPH",
+    "quarters_processed": 9,
+    "periods_available": [
+      "milei"
+    ]
+  }
+}

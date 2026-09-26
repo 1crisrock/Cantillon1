@@ -65,6 +65,9 @@ agenthub/agents/youtube/db
 eph_data/
 memory/
 
+# EPH production cache (explicitly tracked)
+!python/data/eph_aggregated.json
+
 # Archive files and large assets
 **/*.zip
 **/*.tar.gz
