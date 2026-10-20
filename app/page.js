@@ -14,11 +14,13 @@ import { useDashboard, DASHBOARD_VIEWS } from '@/lib/dashboard-context'
 import CantillonDashboard from '@/components/CantillonDashboard'
 import MarxianView from '@/components/MarxianView'
 import ReproductionView from '@/components/ReproductionView'
+import BacktestingView from '@/components/BacktestingView'
 
 const VIEW_COMPONENTS = {
   cantillon: CantillonDashboard,
   marxian: MarxianView,
   reproduction: ReproductionView,
+  backtest: BacktestingView,
 }
 
 export default function Page() {

@@ -5,6 +5,7 @@
 // Owned once in app/layout.js, consumed via useDashboard().
 
 import { createContext, useContext, useMemo, useState } from 'react'
+import { ShieldCheck } from 'lucide-react'
 
 export const DASHBOARD_PERIODS = [
   { id: 'milei',     label: 'Milei',              sub: 'Dec 2023 - 2026' },
@@ -18,6 +19,8 @@ export const DASHBOARD_VIEWS = [
   { id: 'cantillon',     label: 'Cantillon & Fiscal',       icon: '🏛️' },
   { id: 'marxian',       label: 'Marxian Accounts',         icon: '🛠️' },
   { id: 'reproduction',  label: 'Integrated Reproduction',  icon: '🔄' },
+  // Icon is a React element (Navbar renders v.icon verbatim) — lucide audit shield.
+  { id: 'backtest',      label: 'Backtesting',              icon: <ShieldCheck size={12} aria-hidden="true" /> },
 ]
 
 const DashboardContext = createContext(null)
