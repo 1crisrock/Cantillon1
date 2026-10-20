@@ -59,7 +59,7 @@ export default function Navbar() {
             <button
               key={v.id}
               onClick={() => selectView(v.id)}
-              className={`relative px-3 py-1.5 text-[11px] font-mono uppercase tracking-wider transition-all border rounded-sm ${
+              className={`relative inline-flex items-center px-3 py-1.5 text-[11px] font-mono uppercase tracking-wider transition-all border rounded-sm ${
                 view === v.id
                   ? 'bg-amber-500/15 text-amber-300 border-amber-500/40 glow-amber'
                   : 'text-slate-400 hover:text-slate-200 border-transparent'
